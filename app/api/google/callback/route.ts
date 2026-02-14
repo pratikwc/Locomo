@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { supabaseAdmin } from '@/lib/supabase-admin';
 import { exchangeCodeForTokens, getUserInfo } from '@/lib/google-client';
 import { validateOAuthState } from '@/lib/oauth-state';
 import { getUserProfile, listGMBAccounts, listBusinessLocations, transformLocationToBusinessData } from '@/lib/gmb-client';
@@ -79,7 +79,7 @@ export async function GET(request: NextRequest) {
 
     const onboardingStatus = hasGmbAccess ? 'completed' : 'no_account';
 
-    const { data: existingAccount, error: fetchError } = await supabase
+    const { data: existingAccount, error: fetchError } = await supabaseAdmin
       .from('google_accounts')
       .select('*')
       .eq('user_id', userId)
@@ -94,7 +94,7 @@ export async function GET(request: NextRequest) {
 
     if (existingAccount) {
       console.log('[OAuth Callback] Updating existing Google account:', existingAccount.id);
-      const { error: updateError } = await supabase
+      const { error: updateError } = await supabaseAdmin
         .from('google_accounts')
         .update({
           google_user_id: userInfo.id,
@@ -119,7 +119,7 @@ export async function GET(request: NextRequest) {
       googleAccountId = existingAccount.id;
     } else {
       console.log('[OAuth Callback] Creating new Google account');
-      const { data: newAccount, error: insertError } = await supabase
+      const { data: newAccount, error: insertError } = await supabaseAdmin
         .from('google_accounts')
         .insert({
           user_id: userId,
@@ -155,7 +155,7 @@ export async function GET(request: NextRequest) {
         for (const location of locations) {
           const businessData = transformLocationToBusinessData(location);
 
-          const { data: existingBusiness } = await supabase
+          const { data: existingBusiness } = await supabaseAdmin
             .from('businesses')
             .select('id')
             .eq('business_id', businessData.businessId)
@@ -164,7 +164,7 @@ export async function GET(request: NextRequest) {
 
           if (existingBusiness) {
             console.log('[OAuth Callback] Updating existing business:', businessData.name);
-            await supabase
+            await supabaseAdmin
               .from('businesses')
               .update({
                 ...businessData,
@@ -175,7 +175,7 @@ export async function GET(request: NextRequest) {
               .eq('id', existingBusiness.id);
           } else {
             console.log('[OAuth Callback] Creating new business:', businessData.name);
-            await supabase
+            await supabaseAdmin
               .from('businesses')
               .insert({
                 user_id: userId,

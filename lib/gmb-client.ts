@@ -110,8 +110,14 @@ export async function listGMBAccounts(accessToken: string): Promise<GMBAccount[]
     );
 
     return data.accounts || [];
-  } catch (error) {
-    console.error('Error listing GMB accounts:', error);
+  } catch (error: any) {
+    const errorMessage = error.message || String(error);
+    console.error('[GMB] Error listing accounts:', errorMessage);
+
+    if (errorMessage.includes('429') || errorMessage.includes('RATE_LIMIT_EXCEEDED')) {
+      console.warn('[GMB] Rate limit exceeded - GMB API quota needs to be enabled in Google Cloud Console');
+    }
+
     return [];
   }
 }
