@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { exchangeCodeForTokens, getUserInfo } from '@/lib/google-client';
 import { validateOAuthState } from '@/lib/oauth-state';
-import { getUserProfile, listGMBAccounts, listBusinessLocations, transformLocationToBusinessData } from '@/lib/gmb-client';
+import { getUserProfile } from '@/lib/gmb-client';
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -72,12 +72,8 @@ export async function GET(request: NextRequest) {
     console.log('[OAuth Callback] Fetching user profile from Google...');
     const userProfile = await getUserProfile(tokenData.access_token);
 
-    console.log('[OAuth Callback] Checking for GMB accounts...');
-    const gmbAccounts = await listGMBAccounts(tokenData.access_token);
-    const hasGmbAccess = gmbAccounts.length > 0;
-    const gmbAccountName = hasGmbAccess ? gmbAccounts[0].name : null;
-
-    const onboardingStatus = hasGmbAccess ? 'completed' : 'no_account';
+    // Set status to pending_verification - GMB access will be checked asynchronously
+    const onboardingStatus = 'pending_verification';
 
     const { data: accountUsedByOther, error: checkError } = await supabaseAdmin
       .from('google_accounts')
@@ -125,8 +121,8 @@ export async function GET(request: NextRequest) {
           scopes: tokenData.scope ? tokenData.scope.split(' ') : existingAccount.scopes,
           display_name: userProfile.name,
           profile_photo_url: userProfile.picture,
-          has_gmb_access: hasGmbAccess,
-          gmb_account_name: gmbAccountName,
+          has_gmb_access: null,
+          gmb_account_name: null,
           onboarding_status: onboardingStatus,
           updated_at: new Date().toISOString(),
         })
@@ -151,8 +147,8 @@ export async function GET(request: NextRequest) {
           scopes: tokenData.scope ? tokenData.scope.split(' ') : [],
           display_name: userProfile.name,
           profile_photo_url: userProfile.picture,
-          has_gmb_access: hasGmbAccess,
-          gmb_account_name: gmbAccountName,
+          has_gmb_access: null,
+          gmb_account_name: null,
           onboarding_status: onboardingStatus,
         })
         .select('id')
@@ -165,51 +161,8 @@ export async function GET(request: NextRequest) {
       googleAccountId = newAccount.id;
     }
 
-    if (hasGmbAccess && gmbAccountName) {
-      console.log('[OAuth Callback] Fetching business locations...');
-      const locations = await listBusinessLocations(tokenData.access_token, gmbAccountName);
-
-      if (locations.length > 0) {
-        console.log(`[OAuth Callback] Found ${locations.length} business location(s)`);
-
-        for (const location of locations) {
-          const businessData = transformLocationToBusinessData(location);
-
-          const { data: existingBusiness } = await supabaseAdmin
-            .from('businesses')
-            .select('id')
-            .eq('business_id', businessData.businessId)
-            .eq('user_id', userId)
-            .maybeSingle();
-
-          if (existingBusiness) {
-            console.log('[OAuth Callback] Updating existing business:', businessData.name);
-            await supabaseAdmin
-              .from('businesses')
-              .update({
-                ...businessData,
-                google_account_id: googleAccountId,
-                last_synced_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
-              })
-              .eq('id', existingBusiness.id);
-          } else {
-            console.log('[OAuth Callback] Creating new business:', businessData.name);
-            await supabaseAdmin
-              .from('businesses')
-              .insert({
-                user_id: userId,
-                google_account_id: googleAccountId,
-                ...businessData,
-                last_synced_at: new Date().toISOString(),
-              });
-          }
-        }
-      }
-    }
-
-    console.log('[OAuth Callback] Successfully connected Google account');
-    return NextResponse.redirect(new URL('/dashboard?success=google_connected', request.url));
+    console.log('[OAuth Callback] Successfully connected Google account. GMB verification will happen asynchronously.');
+    return NextResponse.redirect(new URL('/gmb-onboarding?success=google_connected', request.url));
   } catch (error: any) {
     console.error('[OAuth Callback] Error processing callback:', error);
     const message = error.message || 'Failed to connect Google account';

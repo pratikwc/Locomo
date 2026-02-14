@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { getAuthenticatedUserId } from '@/lib/auth-utils';
-import { listGMBAccounts, listBusinessLocations, transformLocationToBusinessData } from '@/lib/gmb-client';
+import { listGMBAccounts, listBusinessLocations, transformLocationToBusinessData, fetchWithRetry, GMBApiError } from '@/lib/gmb-client';
 import { getValidAccessToken } from '@/lib/google-token-manager';
+import { getCachedData, setCachedData } from '@/lib/gmb-cache';
 
 export async function POST(request: NextRequest) {
   try {
@@ -43,18 +44,47 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    let gmbAccounts;
-    try {
-      gmbAccounts = await listGMBAccounts(accessToken);
-    } catch (error: any) {
-      console.error('[Sync Businesses] Error fetching GMB accounts:', error);
-      return NextResponse.json(
-        {
-          error: error.message || 'Failed to fetch GMB accounts',
-          details: 'Check server logs for details. Ensure all 8 Google Business Profile APIs are enabled in Google Cloud Console.'
-        },
-        { status: 500 }
-      );
+    // Try to get accounts from cache first
+    let gmbAccounts = await getCachedData<any[]>(userId, 'gmb-accounts', {});
+
+    if (!gmbAccounts) {
+      try {
+        gmbAccounts = await fetchWithRetry(
+          () => listGMBAccounts(accessToken),
+          3,
+          2000
+        );
+
+        // Cache the result
+        await setCachedData(userId, 'gmb-accounts', {}, gmbAccounts, { ttlMinutes: 5 });
+      } catch (error: any) {
+        const gmbError = error.gmbError as GMBApiError | undefined;
+        console.error('[Sync Businesses] Error fetching GMB accounts:', error);
+
+        if (gmbError) {
+          return NextResponse.json(
+            {
+              error: 'gmb_api_error',
+              message: gmbError.userMessage,
+              code: gmbError.code,
+              retryable: gmbError.retryable,
+              retryAfter: gmbError.retryAfter,
+              recoverySteps: gmbError.recoverySteps,
+            },
+            { status: gmbError.code }
+          );
+        }
+
+        return NextResponse.json(
+          {
+            error: error.message || 'Failed to fetch GMB accounts',
+            details: 'Check server logs for details.'
+          },
+          { status: 500 }
+        );
+      }
+    } else {
+      console.log('[Sync Businesses] Using cached GMB accounts');
     }
 
     if (gmbAccounts.length === 0) {
@@ -69,7 +99,49 @@ export async function POST(request: NextRequest) {
     }
 
     const gmbAccountName = gmbAccounts[0].name;
-    const locations = await listBusinessLocations(accessToken, gmbAccountName);
+
+    // Try to get locations from cache first
+    let locations = await getCachedData<any[]>(userId, 'gmb-locations', { accountName: gmbAccountName });
+
+    if (!locations) {
+      try {
+        locations = await fetchWithRetry(
+          () => listBusinessLocations(accessToken, gmbAccountName),
+          3,
+          3000
+        );
+
+        // Cache the result for 1 hour
+        await setCachedData(userId, 'gmb-locations', { accountName: gmbAccountName }, locations, { ttlMinutes: 60 });
+      } catch (error: any) {
+        const gmbError = error.gmbError as GMBApiError | undefined;
+        console.error('[Sync Businesses] Error fetching locations:', error);
+
+        if (gmbError) {
+          return NextResponse.json(
+            {
+              error: 'gmb_api_error',
+              message: gmbError.userMessage,
+              code: gmbError.code,
+              retryable: gmbError.retryable,
+              retryAfter: gmbError.retryAfter,
+              recoverySteps: gmbError.recoverySteps,
+            },
+            { status: gmbError.code }
+          );
+        }
+
+        return NextResponse.json(
+          {
+            error: error.message || 'Failed to fetch business locations',
+            details: 'Check server logs for details.'
+          },
+          { status: 500 }
+        );
+      }
+    } else {
+      console.log('[Sync Businesses] Using cached business locations');
+    }
 
     let syncedCount = 0;
 

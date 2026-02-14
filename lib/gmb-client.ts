@@ -70,6 +70,96 @@ interface UserProfile {
 const GMB_API_BASE = 'https://mybusinessbusinessinformation.googleapis.com/v1';
 const GMB_ACCOUNT_MANAGEMENT_BASE = 'https://mybusinessaccountmanagement.googleapis.com/v1';
 
+export interface GMBApiError {
+  code: number;
+  message: string;
+  retryable: boolean;
+  retryAfter?: number;
+  userMessage: string;
+  recoverySteps?: string[];
+}
+
+function parseGMBError(status: number, errorText: string): GMBApiError {
+  const baseError: GMBApiError = {
+    code: status,
+    message: errorText,
+    retryable: false,
+    userMessage: 'An error occurred',
+  };
+
+  if (status === 429) {
+    return {
+      ...baseError,
+      retryable: true,
+      retryAfter: 900000, // 15 minutes in ms
+      userMessage: 'Rate limit exceeded. Too many requests to Google My Business API.',
+      recoverySteps: [
+        'Wait 15 minutes before trying again',
+        'Check your Google Cloud Console quota usage',
+        'Consider implementing request caching',
+      ],
+    };
+  }
+
+  if (status === 403) {
+    return {
+      ...baseError,
+      retryable: false,
+      userMessage: 'Access denied. Google My Business APIs may not be enabled.',
+      recoverySteps: [
+        'Go to Google Cloud Console > APIs & Services > Library',
+        'Enable these APIs: Google My Business API, My Business Business Information API, My Business Account Management API',
+        'Wait 5 minutes for changes to propagate',
+        'Try connecting again',
+      ],
+    };
+  }
+
+  if (status === 401) {
+    return {
+      ...baseError,
+      retryable: false,
+      userMessage: 'Authentication failed. Your access token may be expired.',
+      recoverySteps: [
+        'Disconnect and reconnect your Google account',
+        'Ensure you grant all requested permissions',
+      ],
+    };
+  }
+
+  if (status === 404) {
+    return {
+      ...baseError,
+      retryable: false,
+      userMessage: 'No Google My Business account found.',
+      recoverySteps: [
+        'Visit business.google.com to create a business profile',
+        'Verify your business with Google',
+        'Try connecting again after verification',
+      ],
+    };
+  }
+
+  if (status >= 500) {
+    return {
+      ...baseError,
+      retryable: true,
+      retryAfter: 5000, // 5 seconds
+      userMessage: 'Google servers are temporarily unavailable.',
+      recoverySteps: [
+        'Wait a few minutes and try again',
+        'Check Google Workspace Status Dashboard for outages',
+      ],
+    };
+  }
+
+  return baseError;
+}
+
+async function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 async function fetchWithAuth(url: string, accessToken: string, options: RequestInit = {}) {
   console.log(`[GMB] Fetching: ${url}`);
 
@@ -85,12 +175,43 @@ async function fetchWithAuth(url: string, accessToken: string, options: RequestI
   if (!response.ok) {
     const errorText = await response.text();
     console.error(`[GMB] API Error - Status: ${response.status}, URL: ${url}, Response: ${errorText}`);
-    throw new Error(`GMB API Error: ${response.status} - ${errorText}`);
+
+    const parsedError = parseGMBError(response.status, errorText);
+    const error = new Error(parsedError.userMessage) as Error & { gmbError: GMBApiError };
+    error.gmbError = parsedError;
+    throw error;
   }
 
   const data = await response.json();
   console.log(`[GMB] Success: ${url}`, JSON.stringify(data, null, 2));
   return data;
+}
+
+export async function fetchWithRetry<T>(
+  fn: () => Promise<T>,
+  maxRetries: number = 3,
+  baseDelay: number = 2000
+): Promise<T> {
+  let lastError: any;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error: any) {
+      lastError = error;
+      const gmbError = error.gmbError as GMBApiError | undefined;
+
+      if (!gmbError?.retryable || attempt === maxRetries) {
+        throw error;
+      }
+
+      const delay = gmbError.retryAfter || (baseDelay * Math.pow(2, attempt));
+      console.log(`[GMB] Retry attempt ${attempt + 1}/${maxRetries} after ${delay}ms`);
+      await sleep(delay);
+    }
+  }
+
+  throw lastError;
 }
 
 export async function getUserProfile(accessToken: string): Promise<UserProfile> {
@@ -108,38 +229,13 @@ export async function getUserProfile(accessToken: string): Promise<UserProfile> 
 }
 
 export async function listGMBAccounts(accessToken: string): Promise<GMBAccount[]> {
-  try {
-    const data = await fetchWithAuth(
-      `${GMB_ACCOUNT_MANAGEMENT_BASE}/accounts`,
-      accessToken
-    );
+  const data = await fetchWithAuth(
+    `${GMB_ACCOUNT_MANAGEMENT_BASE}/accounts`,
+    accessToken
+  );
 
-    console.log('[GMB] Successfully retrieved accounts:', data.accounts?.length || 0);
-    return data.accounts || [];
-  } catch (error: any) {
-    const errorMessage = error.message || String(error);
-    console.error('[GMB] Error listing accounts:', errorMessage);
-
-    if (errorMessage.includes('403')) {
-      console.error('[GMB] 403 Error - Possible causes:');
-      console.error('1. Google Business Profile APIs not enabled in Google Cloud Console');
-      console.error('2. Google Workspace users: Check if Google Business Profile is enabled for your organization');
-      console.error('3. Missing required OAuth scopes');
-      throw new Error('API access denied. Please ensure all 8 Google Business Profile APIs are enabled in Google Cloud Console.');
-    }
-
-    if (errorMessage.includes('401')) {
-      console.error('[GMB] 401 Error - Access token invalid or expired');
-      throw new Error('Access token invalid or expired. Please reconnect your Google account.');
-    }
-
-    if (errorMessage.includes('429') || errorMessage.includes('RATE_LIMIT_EXCEEDED')) {
-      console.error('[GMB] Rate limit exceeded');
-      throw new Error('Rate limit exceeded. Please try again later.');
-    }
-
-    throw error;
-  }
+  console.log('[GMB] Successfully retrieved accounts:', data.accounts?.length || 0);
+  return data.accounts || [];
 }
 
 export async function listBusinessLocations(
