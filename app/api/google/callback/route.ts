@@ -79,6 +79,25 @@ export async function GET(request: NextRequest) {
 
     const onboardingStatus = hasGmbAccess ? 'completed' : 'no_account';
 
+    const { data: accountUsedByOther, error: checkError } = await supabaseAdmin
+      .from('google_accounts')
+      .select('user_id')
+      .eq('google_user_id', userInfo.id)
+      .neq('user_id', userId)
+      .maybeSingle();
+
+    if (checkError && checkError.code !== 'PGRST116') {
+      console.error('[OAuth Callback] Database check error:', checkError);
+      throw new Error(`Database error: ${checkError.message}`);
+    }
+
+    if (accountUsedByOther) {
+      console.error('[OAuth Callback] Google account already associated with another user');
+      return NextResponse.redirect(
+        new URL('/google-connect?error=account_in_use&message=This+Google+account+is+already+associated+with+another+user', request.url)
+      );
+    }
+
     const { data: existingAccount, error: fetchError } = await supabaseAdmin
       .from('google_accounts')
       .select('*')

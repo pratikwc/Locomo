@@ -37,6 +37,7 @@ export default function GoogleConnectPage() {
         'invalid_state': messageParam || 'Authorization failed: Invalid or expired state',
         'oauth_error': messageParam || 'Google authorization was denied or failed',
         'auth_failed': messageParam || 'Failed to connect your Google account',
+        'account_in_use': 'This Google account is already associated with another user',
       };
       setError(errorMessages[errorParam] || 'An unknown error occurred');
       window.history.replaceState({}, '', '/google-connect');
