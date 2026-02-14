@@ -40,7 +40,9 @@ export async function exchangeCodeForTokens(code: string) {
   });
 
   if (!response.ok) {
-    throw new Error('Failed to exchange code for tokens');
+    const errorData = await response.json().catch(() => ({}));
+    console.error('[Google Client] Token exchange failed:', errorData);
+    throw new Error(errorData.error_description || errorData.error || 'Failed to exchange code for tokens');
   }
 
   return response.json();
@@ -61,7 +63,9 @@ export async function refreshAccessToken(refreshToken: string) {
   });
 
   if (!response.ok) {
-    throw new Error('Failed to refresh access token');
+    const errorData = await response.json().catch(() => ({}));
+    console.error('[Google Client] Token refresh failed:', errorData);
+    throw new Error(errorData.error_description || errorData.error || 'Failed to refresh access token');
   }
 
   return response.json();
@@ -75,7 +79,9 @@ export async function getUserInfo(accessToken: string) {
   });
 
   if (!response.ok) {
-    throw new Error('Failed to get user info');
+    const errorData = await response.json().catch(() => ({}));
+    console.error('[Google Client] Failed to get user info:', errorData);
+    throw new Error(errorData.error_description || errorData.error || 'Failed to get user info');
   }
 
   return response.json();

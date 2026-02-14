@@ -23,6 +23,22 @@ export default function GoogleConnectPage() {
 
   useEffect(() => {
     checkGoogleConnection();
+
+    const params = new URLSearchParams(window.location.search);
+    const errorParam = params.get('error');
+    const messageParam = params.get('message');
+
+    if (errorParam) {
+      const errorMessages: Record<string, string> = {
+        'missing_params': 'Authorization failed: Missing required parameters',
+        'invalid_state': messageParam || 'Authorization failed: Invalid or expired state',
+        'oauth_error': messageParam || 'Google authorization was denied or failed',
+        'auth_failed': messageParam || 'Failed to connect your Google account',
+      };
+      setError(errorMessages[errorParam] || 'An unknown error occurred');
+
+      window.history.replaceState({}, '', '/google-connect');
+    }
   }, [user]);
 
   const checkGoogleConnection = async () => {
@@ -49,15 +65,18 @@ export default function GoogleConnectPage() {
       const response = await fetch('/api/google/auth-url');
       const data = await response.json();
 
+      if (!response.ok) {
+        throw new Error(data.message || data.error || 'Failed to get authorization URL');
+      }
+
       if (data.authUrl) {
         window.location.href = data.authUrl;
       } else {
         setError('Failed to get Google authorization URL');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Connect Google error:', err);
-      setError('Failed to initiate Google connection');
-    } finally {
+      setError(err.message || 'Failed to initiate Google connection');
       setLoading(false);
     }
   };

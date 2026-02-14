@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyToken } from '@/lib/auth-utils';
 import { getGoogleAuthUrl } from '@/lib/google-client';
+import { createOAuthState } from '@/lib/oauth-state';
 
 export async function GET(request: NextRequest) {
   try {
@@ -8,7 +9,7 @@ export async function GET(request: NextRequest) {
 
     if (!token) {
       return NextResponse.json(
-        { error: 'Not authenticated' },
+        { error: 'Not authenticated', message: 'You must be logged in to connect your Google account' },
         { status: 401 }
       );
     }
@@ -17,19 +18,21 @@ export async function GET(request: NextRequest) {
 
     if (!payload) {
       return NextResponse.json(
-        { error: 'Invalid token' },
+        { error: 'Invalid token', message: 'Your session has expired. Please log in again.' },
         { status: 401 }
       );
     }
 
-    const state = Buffer.from(JSON.stringify({ userId: payload.userId })).toString('base64');
+    const state = createOAuthState(payload.userId);
     const authUrl = getGoogleAuthUrl(state);
+
+    console.log('[OAuth] Generated auth URL for user:', payload.userId);
 
     return NextResponse.json({ authUrl });
   } catch (error) {
-    console.error('Get auth URL error:', error);
+    console.error('[OAuth] Get auth URL error:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Internal server error', message: 'Failed to generate authorization URL' },
       { status: 500 }
     );
   }
