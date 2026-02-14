@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -36,20 +36,28 @@ export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [hasGMBAccess, setHasGMBAccess] = useState(true);
+  const hasFetchedRef = useRef(false);
+  const isRedirectingRef = useRef(false);
 
   useEffect(() => {
-    fetchDashboardData();
+    if (!hasFetchedRef.current && !isRedirectingRef.current) {
+      hasFetchedRef.current = true;
+      fetchDashboardData();
+    }
   }, []);
 
   const fetchDashboardData = async () => {
+    if (isRedirectingRef.current) return;
+
     try {
       setLoading(true);
 
       const statusResponse = await fetch('/api/gmb/check-status');
       const statusData = await statusResponse.json();
 
-      if (!statusData.connected) {
-        router.push('/google-connect');
+      if (!statusData.connected && !isRedirectingRef.current) {
+        isRedirectingRef.current = true;
+        router.replace('/google-connect');
         return;
       }
 

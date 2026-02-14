@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/auth-context';
 import { Button } from '@/components/ui/button';
@@ -14,14 +14,22 @@ export default function GoogleConnectPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasGoogleAccount, setHasGoogleAccount] = useState(false);
+  const [checkingConnection, setCheckingConnection] = useState(false);
+  const hasCheckedRef = useRef(false);
+  const isRedirectingRef = useRef(false);
 
   useEffect(() => {
     if (!authLoading && !user) {
-      router.push('/login');
+      router.replace('/login');
     }
   }, [user, authLoading, router]);
 
   useEffect(() => {
+    if (authLoading || !user || hasCheckedRef.current || isRedirectingRef.current) {
+      return;
+    }
+
+    hasCheckedRef.current = true;
     checkGoogleConnection();
 
     const params = new URLSearchParams(window.location.search);
@@ -39,21 +47,25 @@ export default function GoogleConnectPage() {
 
       window.history.replaceState({}, '', '/google-connect');
     }
-  }, [user]);
+  }, [user, authLoading]);
 
   const checkGoogleConnection = async () => {
-    if (!user) return;
+    if (checkingConnection || isRedirectingRef.current) return;
 
+    setCheckingConnection(true);
     try {
       const response = await fetch('/api/google/check-connection');
       const data = await response.json();
 
-      if (data.connected) {
+      if (data.connected && !isRedirectingRef.current) {
         setHasGoogleAccount(true);
-        router.push('/dashboard');
+        isRedirectingRef.current = true;
+        router.replace('/dashboard');
       }
     } catch (err) {
       console.error('Check connection error:', err);
+    } finally {
+      setCheckingConnection(false);
     }
   };
 
