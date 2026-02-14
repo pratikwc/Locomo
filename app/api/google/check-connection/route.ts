@@ -23,11 +23,11 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const { data: googleAccount, error: fetchError } = await supabase
+    const { data: googleAccounts, error: fetchError } = await supabase
       .from('google_accounts')
       .select('*')
       .eq('user_id', payload.userId)
-      .maybeSingle();
+      .order('updated_at', { ascending: false });
 
     if (fetchError) {
       console.error('[Check Connection] Database error:', fetchError);
@@ -37,13 +37,14 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    if (!googleAccount) {
+    if (!googleAccounts || googleAccounts.length === 0) {
       return NextResponse.json({
         connected: false,
         account: null,
       });
     }
 
+    const googleAccount = googleAccounts[0];
     const expired = await isTokenExpired(googleAccount.token_expires_at);
 
     return NextResponse.json({

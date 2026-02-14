@@ -83,6 +83,7 @@ export async function GET(request: NextRequest) {
       .from('google_accounts')
       .select('*')
       .eq('user_id', userId)
+      .eq('google_user_id', userInfo.id)
       .maybeSingle();
 
     if (fetchError) {

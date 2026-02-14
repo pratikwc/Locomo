@@ -10,19 +10,21 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { data: googleAccount, error: accountError } = await supabase
+    const { data: googleAccounts, error: accountError } = await supabase
       .from('google_accounts')
       .select('*')
       .eq('user_id', userId)
-      .maybeSingle();
+      .order('updated_at', { ascending: false });
 
-    if (accountError || !googleAccount) {
+    if (accountError || !googleAccounts || googleAccounts.length === 0) {
       return NextResponse.json({
         connected: false,
         has_gmb_access: false,
         onboarding_status: 'not_started',
       });
     }
+
+    const googleAccount = googleAccounts[0];
 
     const { data: businesses, error: businessError } = await supabase
       .from('businesses')

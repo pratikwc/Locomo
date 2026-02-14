@@ -11,18 +11,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { data: googleAccount, error: accountError } = await supabase
+    const { data: googleAccounts, error: accountError } = await supabase
       .from('google_accounts')
       .select('*')
       .eq('user_id', userId)
-      .maybeSingle();
+      .order('updated_at', { ascending: false });
 
-    if (accountError || !googleAccount) {
+    if (accountError || !googleAccounts || googleAccounts.length === 0) {
       return NextResponse.json(
         { error: 'Google account not connected' },
         { status: 400 }
       );
     }
+
+    const googleAccount = googleAccounts[0];
 
     if (!googleAccount.has_gmb_access) {
       return NextResponse.json(

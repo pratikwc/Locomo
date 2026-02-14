@@ -9,16 +9,18 @@ export interface GoogleTokens {
 
 export async function getValidAccessToken(userId: string): Promise<string | null> {
   try {
-    const { data: googleAccount, error } = await supabase
+    const { data: googleAccounts, error } = await supabase
       .from('google_accounts')
       .select('access_token, refresh_token, token_expires_at')
       .eq('user_id', userId)
-      .maybeSingle();
+      .order('updated_at', { ascending: false });
 
-    if (error || !googleAccount) {
+    if (error || !googleAccounts || googleAccounts.length === 0) {
       console.error('[Token Manager] Failed to fetch Google account:', error);
       return null;
     }
+
+    const googleAccount = googleAccounts[0];
 
     if (!googleAccount.access_token || !googleAccount.refresh_token) {
       console.error('[Token Manager] Missing tokens in database');
@@ -47,7 +49,8 @@ export async function getValidAccessToken(userId: string): Promise<string | null
           token_expires_at: newExpiresAt.toISOString(),
           updated_at: new Date().toISOString(),
         })
-        .eq('user_id', userId);
+        .eq('user_id', userId)
+        .eq('refresh_token', googleAccount.refresh_token);
 
       if (updateError) {
         console.error('[Token Manager] Failed to update refreshed token:', updateError);
