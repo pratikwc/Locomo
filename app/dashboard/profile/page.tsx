@@ -7,8 +7,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { RefreshCw, Save, User } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { RefreshCw, Save, User, Phone, Mail, Shield, Calendar, Link2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/auth-context';
+import { format } from 'date-fns';
 
 interface Business {
   id: string;
@@ -29,10 +32,16 @@ interface UserProfile {
 
 export default function ProfilePage() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [business, setBusiness] = useState<Business | null>(null);
+  const [googleAccountInfo, setGoogleAccountInfo] = useState<{
+    email: string;
+    connected_at: string;
+    last_synced: string;
+  } | null>(null);
 
   const fetchData = async () => {
     setLoading(true);
@@ -45,6 +54,12 @@ export default function ProfilePage() {
           display_name: statusData.display_name,
           profile_photo_url: statusData.profile_photo_url,
           email: statusData.email,
+        });
+
+        setGoogleAccountInfo({
+          email: statusData.email,
+          connected_at: statusData.last_synced || new Date().toISOString(),
+          last_synced: statusData.last_synced || new Date().toISOString(),
         });
 
         if (statusData.businesses && statusData.businesses.length > 0) {
@@ -143,6 +158,97 @@ export default function ProfilePage() {
           </CardContent>
         </Card>
       )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Account Information</CardTitle>
+          <CardDescription>Your account and connection details</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="grid gap-6 md:grid-cols-2">
+            <div className="space-y-4">
+              <div className="flex items-start gap-3">
+                <Phone className="h-5 w-5 text-slate-500 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-slate-900">Phone Number</p>
+                  <p className="text-sm text-slate-600 mt-1">
+                    {user?.phoneNumber || 'Not available'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3">
+                <Shield className="h-5 w-5 text-slate-500 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-slate-900">Account Role</p>
+                  <div className="mt-1">
+                    <Badge variant={user?.role === 'admin' ? 'default' : 'secondary'}>
+                      {user?.role || 'user'}
+                    </Badge>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3">
+                <Shield className="h-5 w-5 text-slate-500 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-slate-900">Account Status</p>
+                  <div className="mt-1">
+                    <Badge
+                      variant={user?.status === 'active' ? 'default' : 'destructive'}
+                    >
+                      {user?.status || 'active'}
+                    </Badge>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              {googleAccountInfo && (
+                <>
+                  <div className="flex items-start gap-3">
+                    <Mail className="h-5 w-5 text-slate-500 mt-0.5" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-slate-900">Google Account</p>
+                      <p className="text-sm text-slate-600 mt-1">
+                        {googleAccountInfo.email}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3">
+                    <Link2 className="h-5 w-5 text-slate-500 mt-0.5" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-slate-900">Connection Status</p>
+                      <div className="mt-1">
+                        <Badge variant="default" className="bg-green-600">
+                          Connected
+                        </Badge>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3">
+                    <Calendar className="h-5 w-5 text-slate-500 mt-0.5" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-slate-900">Last Synced</p>
+                      <p className="text-sm text-slate-600 mt-1">
+                        {format(new Date(googleAccountInfo.last_synced), 'PPp')}
+                      </p>
+                    </div>
+                  </div>
+                </>
+              )}
+              {!googleAccountInfo && (
+                <div className="flex items-center justify-center h-full">
+                  <p className="text-sm text-slate-500">No Google account connected</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="flex items-center justify-between">
         <div>
