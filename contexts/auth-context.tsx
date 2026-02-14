@@ -16,6 +16,8 @@ interface AuthContextType {
   logout: () => Promise<void>;
   sendOTP: (phoneNumber: string) => Promise<void>;
   error: string | null;
+  hasGoogleAccount: boolean | null;
+  checkGoogleConnection: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -24,6 +26,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [hasGoogleAccount, setHasGoogleAccount] = useState<boolean | null>(null);
 
   useEffect(() => {
     checkAuth();
@@ -35,11 +38,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (response.ok) {
         const data = await response.json();
         setUser(data.user);
+        if (data.user) {
+          await checkGoogleConnection();
+        }
       }
     } catch (err) {
       console.error('Auth check error:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const checkGoogleConnection = async () => {
+    try {
+      const response = await fetch('/api/google/check-connection');
+      if (response.ok) {
+        const data = await response.json();
+        setHasGoogleAccount(data.connected);
+      }
+    } catch (err) {
+      console.error('Google connection check error:', err);
+      setHasGoogleAccount(false);
     }
   };
 
@@ -95,7 +114,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, sendOTP, error }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, sendOTP, error, hasGoogleAccount, checkGoogleConnection }}>
       {children}
     </AuthContext.Provider>
   );

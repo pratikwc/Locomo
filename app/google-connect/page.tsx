@@ -10,27 +10,22 @@ import { Loader2, CheckCircle2 } from 'lucide-react';
 
 export default function GoogleConnectPage() {
   const router = useRouter();
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, hasGoogleAccount } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [hasGoogleAccount, setHasGoogleAccount] = useState(false);
-  const [checkingConnection, setCheckingConnection] = useState(false);
-  const hasCheckedRef = useRef(false);
-  const isRedirectingRef = useRef(false);
+  const hasRedirectedRef = useRef(false);
 
   useEffect(() => {
     if (!authLoading && !user) {
       router.replace('/login');
-    }
-  }, [user, authLoading, router]);
-
-  useEffect(() => {
-    if (authLoading || !user || hasCheckedRef.current || isRedirectingRef.current) {
       return;
     }
 
-    hasCheckedRef.current = true;
-    checkGoogleConnection();
+    if (!authLoading && user && hasGoogleAccount === true && !hasRedirectedRef.current) {
+      hasRedirectedRef.current = true;
+      router.replace('/dashboard');
+      return;
+    }
 
     const params = new URLSearchParams(window.location.search);
     const errorParam = params.get('error');
@@ -44,30 +39,9 @@ export default function GoogleConnectPage() {
         'auth_failed': messageParam || 'Failed to connect your Google account',
       };
       setError(errorMessages[errorParam] || 'An unknown error occurred');
-
       window.history.replaceState({}, '', '/google-connect');
     }
-  }, [user, authLoading]);
-
-  const checkGoogleConnection = async () => {
-    if (checkingConnection || isRedirectingRef.current) return;
-
-    setCheckingConnection(true);
-    try {
-      const response = await fetch('/api/google/check-connection');
-      const data = await response.json();
-
-      if (data.connected && !isRedirectingRef.current) {
-        setHasGoogleAccount(true);
-        isRedirectingRef.current = true;
-        router.replace('/dashboard');
-      }
-    } catch (err) {
-      console.error('Check connection error:', err);
-    } finally {
-      setCheckingConnection(false);
-    }
-  };
+  }, [user, authLoading, hasGoogleAccount, router]);
 
   const handleConnectGoogle = async () => {
     setLoading(true);
@@ -93,7 +67,7 @@ export default function GoogleConnectPage() {
     }
   };
 
-  if (authLoading) {
+  if (authLoading || hasGoogleAccount === null) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
@@ -124,7 +98,7 @@ export default function GoogleConnectPage() {
             </Alert>
           )}
 
-          {hasGoogleAccount ? (
+          {hasGoogleAccount === true ? (
             <div className="flex flex-col items-center space-y-4">
               <CheckCircle2 className="h-16 w-16 text-green-600" />
               <p className="text-center text-gray-600">

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import { useAuth } from '@/contexts/auth-context';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { SimpleProgress } from '@/components/simple-progress';
@@ -19,6 +20,7 @@ import {
   MousePointer,
   AlertCircle,
   RefreshCw,
+  Loader2,
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -33,33 +35,48 @@ interface DashboardData {
 
 export default function DashboardPage() {
   const router = useRouter();
+  const { hasGoogleAccount, loading: authLoading, checkGoogleConnection } = useAuth();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [hasGMBAccess, setHasGMBAccess] = useState(true);
   const hasFetchedRef = useRef(false);
-  const isRedirectingRef = useRef(false);
+  const hasRedirectedRef = useRef(false);
+  const hasCheckedSuccessRef = useRef(false);
 
   useEffect(() => {
-    if (!hasFetchedRef.current && !isRedirectingRef.current) {
+    if (!hasCheckedSuccessRef.current) {
+      hasCheckedSuccessRef.current = true;
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('success') === 'google_connected') {
+        checkGoogleConnection();
+        window.history.replaceState({}, '', '/dashboard');
+      }
+    }
+  }, [checkGoogleConnection]);
+
+  useEffect(() => {
+    if (authLoading || hasGoogleAccount === null) {
+      return;
+    }
+
+    if (hasGoogleAccount === false && !hasRedirectedRef.current) {
+      hasRedirectedRef.current = true;
+      router.replace('/google-connect');
+      return;
+    }
+
+    if (hasGoogleAccount === true && !hasFetchedRef.current) {
       hasFetchedRef.current = true;
       fetchDashboardData();
     }
-  }, []);
+  }, [hasGoogleAccount, authLoading, router]);
 
   const fetchDashboardData = async () => {
-    if (isRedirectingRef.current) return;
-
     try {
       setLoading(true);
 
       const statusResponse = await fetch('/api/gmb/check-status');
       const statusData = await statusResponse.json();
-
-      if (!statusData.connected && !isRedirectingRef.current) {
-        isRedirectingRef.current = true;
-        router.replace('/google-connect');
-        return;
-      }
 
       if (!statusData.has_gmb_access) {
         setHasGMBAccess(false);
@@ -111,6 +128,14 @@ export default function DashboardPage() {
     if (score >= 60) return 'Good';
     return 'Needs Improvement';
   };
+
+  if (authLoading || hasGoogleAccount === null) {
+    return (
+      <div className="p-6 flex items-center justify-center min-h-screen">
+        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+      </div>
+    );
+  }
 
   if (!hasGMBAccess) {
     return (
