@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { supabaseAdmin } from '@/lib/supabase-admin';
 import { getAuthenticatedUserId } from '@/lib/auth-utils';
 
 export async function GET(request: NextRequest) {
@@ -10,11 +10,19 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { data: googleAccounts, error: accountError } = await supabase
+    console.log('[Check Status] Checking for user:', userId);
+
+    const { data: googleAccounts, error: accountError } = await supabaseAdmin
       .from('google_accounts')
       .select('*')
       .eq('user_id', userId)
       .order('updated_at', { ascending: false });
+
+    console.log('[Check Status] Google accounts found:', googleAccounts?.length || 0);
+
+    if (accountError) {
+      console.error('[Check Status] Account error:', accountError);
+    }
 
     if (accountError || !googleAccounts || googleAccounts.length === 0) {
       return NextResponse.json({
@@ -26,7 +34,7 @@ export async function GET(request: NextRequest) {
 
     const googleAccount = googleAccounts[0];
 
-    const { data: businesses, error: businessError } = await supabase
+    const { data: businesses, error: businessError } = await supabaseAdmin
       .from('businesses')
       .select('id, name, business_id, last_synced_at')
       .eq('user_id', userId);

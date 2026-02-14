@@ -46,10 +46,19 @@ export default function ProfilePage() {
   const fetchData = async () => {
     setLoading(true);
     try {
+      console.log('[Profile] Fetching GMB status...');
       const statusResponse = await fetch('/api/gmb/check-status');
       const statusData = await statusResponse.json();
 
+      console.log('[Profile] Status data:', {
+        connected: statusData.connected,
+        has_gmb_access: statusData.has_gmb_access,
+        email: statusData.email,
+        businesses: statusData.businesses?.length || 0,
+      });
+
       if (statusData.connected) {
+        console.log('[Profile] Setting user profile and Google account info');
         setUserProfile({
           display_name: statusData.display_name,
           profile_photo_url: statusData.profile_photo_url,
@@ -71,9 +80,11 @@ export default function ProfilePage() {
             setBusiness(businessData);
           }
         }
+      } else {
+        console.log('[Profile] No Google account connected');
       }
     } catch (error) {
-      console.error('Error fetching data:', error);
+      console.error('[Profile] Error fetching data:', error);
     } finally {
       setLoading(false);
     }

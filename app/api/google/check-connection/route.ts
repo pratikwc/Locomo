@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyToken } from '@/lib/auth-utils';
-import { supabase } from '@/lib/supabase';
+import { supabaseAdmin } from '@/lib/supabase-admin';
 import { isTokenExpired } from '@/lib/google-token-manager';
 
 export async function GET(request: NextRequest) {
@@ -23,11 +23,15 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const { data: googleAccounts, error: fetchError } = await supabase
+    console.log('[Check Connection] Checking for user:', payload.userId);
+
+    const { data: googleAccounts, error: fetchError } = await supabaseAdmin
       .from('google_accounts')
       .select('*')
       .eq('user_id', payload.userId)
-      .order('updated_at', { ascending: false });
+      .order('updated_at', { ascending: false});
+
+    console.log('[Check Connection] Google accounts found:', googleAccounts?.length || 0);
 
     if (fetchError) {
       console.error('[Check Connection] Database error:', fetchError);
