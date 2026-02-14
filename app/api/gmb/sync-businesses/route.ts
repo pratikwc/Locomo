@@ -43,27 +43,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    let gmbAccounts;
-    try {
-      gmbAccounts = await listGMBAccounts(accessToken);
-    } catch (error: any) {
-      console.error('[Sync Businesses] Error fetching GMB accounts:', error);
-      return NextResponse.json(
-        {
-          error: error.message || 'Failed to fetch GMB accounts',
-          details: 'Check server logs for details. Ensure all 8 Google Business Profile APIs are enabled in Google Cloud Console.'
-        },
-        { status: 500 }
-      );
-    }
+    const gmbAccounts = await listGMBAccounts(accessToken);
 
     if (gmbAccounts.length === 0) {
       return NextResponse.json(
-        {
-          error: 'No GMB accounts found',
-          message: 'Your Google account is connected but no Business Profile accounts were found. Please ensure you have created a Google Business Profile and have the necessary permissions.',
-          helpUrl: 'https://support.google.com/business/answer/2911778'
-        },
+        { error: 'No GMB accounts found' },
         { status: 404 }
       );
     }

@@ -71,8 +71,6 @@ const GMB_API_BASE = 'https://mybusinessbusinessinformation.googleapis.com/v1';
 const GMB_ACCOUNT_MANAGEMENT_BASE = 'https://mybusinessaccountmanagement.googleapis.com/v1';
 
 async function fetchWithAuth(url: string, accessToken: string, options: RequestInit = {}) {
-  console.log(`[GMB] Fetching: ${url}`);
-
   const response = await fetch(url, {
     ...options,
     headers: {
@@ -84,13 +82,10 @@ async function fetchWithAuth(url: string, accessToken: string, options: RequestI
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.error(`[GMB] API Error - Status: ${response.status}, URL: ${url}, Response: ${errorText}`);
     throw new Error(`GMB API Error: ${response.status} - ${errorText}`);
   }
 
-  const data = await response.json();
-  console.log(`[GMB] Success: ${url}`, JSON.stringify(data, null, 2));
-  return data;
+  return response.json();
 }
 
 export async function getUserProfile(accessToken: string): Promise<UserProfile> {
@@ -114,31 +109,16 @@ export async function listGMBAccounts(accessToken: string): Promise<GMBAccount[]
       accessToken
     );
 
-    console.log('[GMB] Successfully retrieved accounts:', data.accounts?.length || 0);
     return data.accounts || [];
   } catch (error: any) {
     const errorMessage = error.message || String(error);
     console.error('[GMB] Error listing accounts:', errorMessage);
 
-    if (errorMessage.includes('403')) {
-      console.error('[GMB] 403 Error - Possible causes:');
-      console.error('1. Google Business Profile APIs not enabled in Google Cloud Console');
-      console.error('2. Google Workspace users: Check if Google Business Profile is enabled for your organization');
-      console.error('3. Missing required OAuth scopes');
-      throw new Error('API access denied. Please ensure all 8 Google Business Profile APIs are enabled in Google Cloud Console.');
-    }
-
-    if (errorMessage.includes('401')) {
-      console.error('[GMB] 401 Error - Access token invalid or expired');
-      throw new Error('Access token invalid or expired. Please reconnect your Google account.');
-    }
-
     if (errorMessage.includes('429') || errorMessage.includes('RATE_LIMIT_EXCEEDED')) {
-      console.error('[GMB] Rate limit exceeded');
-      throw new Error('Rate limit exceeded. Please try again later.');
+      console.warn('[GMB] Rate limit exceeded - GMB API quota needs to be enabled in Google Cloud Console');
     }
 
-    throw error;
+    return [];
   }
 }
 
