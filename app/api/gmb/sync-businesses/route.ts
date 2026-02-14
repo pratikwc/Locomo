@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { getAuthenticatedUserId } from '@/lib/auth-utils';
 import { listGMBAccounts, listBusinessLocations, transformLocationToBusinessData } from '@/lib/gmb-client';
+import { getValidAccessToken } from '@/lib/google-token-manager';
 
 export async function POST(request: NextRequest) {
   try {
@@ -33,7 +34,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const gmbAccounts = await listGMBAccounts(googleAccount.access_token);
+    const accessToken = await getValidAccessToken(userId);
+
+    if (!accessToken) {
+      return NextResponse.json(
+        { error: 'Failed to get valid access token' },
+        { status: 401 }
+      );
+    }
+
+    const gmbAccounts = await listGMBAccounts(accessToken);
 
     if (gmbAccounts.length === 0) {
       return NextResponse.json(
@@ -43,7 +53,7 @@ export async function POST(request: NextRequest) {
     }
 
     const gmbAccountName = gmbAccounts[0].name;
-    const locations = await listBusinessLocations(googleAccount.access_token, gmbAccountName);
+    const locations = await listBusinessLocations(accessToken, gmbAccountName);
 
     let syncedCount = 0;
 

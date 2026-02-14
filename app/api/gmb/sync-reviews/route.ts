@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { getAuthenticatedUserId } from '@/lib/auth-utils';
 import { listReviews } from '@/lib/gmb-client';
+import { getValidAccessToken } from '@/lib/google-token-manager';
 
 export async function POST(request: NextRequest) {
   try {
@@ -35,8 +36,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'GMB account not configured' }, { status: 400 });
     }
 
+    const accessToken = await getValidAccessToken(userId);
+
+    if (!accessToken) {
+      return NextResponse.json(
+        { error: 'Failed to get valid access token' },
+        { status: 401 }
+      );
+    }
+
     const reviews = await listReviews(
-      googleAccount.access_token,
+      accessToken,
       gmbAccountName,
       business.business_id
     );
