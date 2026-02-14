@@ -1,69 +1,214 @@
 "use client";
 
+import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Edit3, Save } from 'lucide-react';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { RefreshCw, Save, User } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
+
+interface Business {
+  id: string;
+  name: string;
+  category: string | null;
+  address: any;
+  phone: string | null;
+  website: string | null;
+  description: string | null;
+  hours: any;
+}
+
+interface UserProfile {
+  display_name: string | null;
+  profile_photo_url: string | null;
+  email: string;
+}
 
 export default function ProfilePage() {
+  const { toast } = useToast();
+  const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [business, setBusiness] = useState<Business | null>(null);
+
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const statusResponse = await fetch('/api/gmb/check-status');
+      const statusData = await statusResponse.json();
+
+      if (statusData.connected) {
+        setUserProfile({
+          display_name: statusData.display_name,
+          profile_photo_url: statusData.profile_photo_url,
+          email: statusData.email,
+        });
+
+        if (statusData.businesses && statusData.businesses.length > 0) {
+          const businessId = statusData.businesses[0].id;
+
+          const businessResponse = await fetch(`/api/businesses/${businessId}`);
+          if (businessResponse.ok) {
+            const businessData = await businessResponse.json();
+            setBusiness(businessData);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSync = async () => {
+    setSyncing(true);
+    try {
+      const response = await fetch('/api/gmb/sync-businesses', { method: 'POST' });
+      const data = await response.json();
+
+      if (response.ok) {
+        toast({
+          title: 'Sync Complete',
+          description: data.message,
+        });
+        await fetchData();
+      } else {
+        throw new Error(data.error);
+      }
+    } catch (error: any) {
+      toast({
+        title: 'Sync Failed',
+        description: error.message || 'Failed to sync business data',
+        variant: 'destructive',
+      });
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const formatAddress = (address: any) => {
+    if (!address) return '';
+    const parts = [
+      ...(address.addressLines || []),
+      address.locality,
+      address.administrativeArea,
+      address.postalCode,
+    ].filter(Boolean);
+    return parts.join(', ');
+  };
+
+  if (loading) {
+    return (
+      <div className="p-6 flex items-center justify-center">
+        <RefreshCw className="h-8 w-8 animate-spin text-slate-400" />
+      </div>
+    );
+  }
+
   return (
     <div className="p-6 space-y-6">
+      {userProfile && (
+        <Card className="bg-gradient-to-r from-slate-50 to-slate-100">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-4">
+              <Avatar className="h-16 w-16">
+                <AvatarImage src={userProfile.profile_photo_url || ''} />
+                <AvatarFallback>
+                  <User className="h-8 w-8" />
+                </AvatarFallback>
+              </Avatar>
+              <div className="flex-1">
+                <h2 className="text-2xl font-bold text-slate-900">
+                  {userProfile.display_name || 'User'}
+                </h2>
+                <p className="text-slate-600">{userProfile.email}</p>
+              </div>
+              <Button
+                onClick={handleSync}
+                disabled={syncing}
+                variant="outline"
+              >
+                <RefreshCw className={`mr-2 h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
+                {syncing ? 'Syncing...' : 'Sync Now'}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Business Profile</h1>
-          <p className="text-gray-500 mt-1">Edit your Google Business Profile information</p>
+          <p className="text-gray-500 mt-1">View your Google Business Profile information</p>
         </div>
-        <Button>
-          <Save className="mr-2 h-4 w-4" />
-          Save Changes
-        </Button>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Basic Information</CardTitle>
-          <CardDescription>Update your business details</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="name">Business Name</Label>
-              <Input id="name" placeholder="Your Business Name" />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="category">Category</Label>
-              <Input id="category" placeholder="e.g., Coffee Shop" />
-            </div>
-          </div>
+      {business ? (
+        <>
+          <Card>
+            <CardHeader>
+              <CardTitle>Basic Information</CardTitle>
+              <CardDescription>Your business details from Google</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="name">Business Name</Label>
+                  <Input id="name" value={business.name || ''} readOnly />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="category">Category</Label>
+                  <Input id="category" value={business.category || ''} readOnly />
+                </div>
+              </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="description">Business Description</Label>
-            <Textarea
-              id="description"
-              placeholder="Describe your business..."
-              rows={4}
-            />
-          </div>
+              <div className="space-y-2">
+                <Label htmlFor="description">Business Description</Label>
+                <Textarea
+                  id="description"
+                  value={business.description || ''}
+                  rows={4}
+                  readOnly
+                />
+              </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="phone">Phone Number</Label>
-              <Input id="phone" type="tel" placeholder="+1 (555) 000-0000" />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="website">Website</Label>
-              <Input id="website" type="url" placeholder="https://example.com" />
-            </div>
-          </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="phone">Phone Number</Label>
+                  <Input id="phone" type="tel" value={business.phone || ''} readOnly />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="website">Website</Label>
+                  <Input id="website" type="url" value={business.website || ''} readOnly />
+                </div>
+              </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="address">Address</Label>
-            <Input id="address" placeholder="123 Main St, City, State 12345" />
-          </div>
-        </CardContent>
-      </Card>
+              <div className="space-y-2">
+                <Label htmlFor="address">Address</Label>
+                <Input id="address" value={formatAddress(business.address)} readOnly />
+              </div>
+            </CardContent>
+          </Card>
+        </>
+      ) : (
+        <Card>
+          <CardContent className="pt-6 text-center py-12">
+            <p className="text-slate-500">No business data available. Please sync your Google Business Profile.</p>
+            <Button onClick={handleSync} className="mt-4" disabled={syncing}>
+              <RefreshCw className={`mr-2 h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
+              Sync Business Data
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>

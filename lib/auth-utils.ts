@@ -1,4 +1,5 @@
 import { SignJWT, jwtVerify } from 'jose';
+import { NextRequest } from 'next/server';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 
@@ -28,4 +29,25 @@ export async function verifyToken(token: string): Promise<any> {
 
 export function isOTPExpired(expiresAt: string): boolean {
   return new Date(expiresAt) < new Date();
+}
+
+export async function getAuthenticatedUserId(request: NextRequest): Promise<string | null> {
+  try {
+    const token = request.cookies.get('auth_token')?.value;
+
+    if (!token) {
+      return null;
+    }
+
+    const payload = await verifyToken(token);
+
+    if (!payload || !payload.userId) {
+      return null;
+    }
+
+    return payload.userId as string;
+  } catch (error) {
+    console.error('Error getting authenticated user ID:', error);
+    return null;
+  }
 }

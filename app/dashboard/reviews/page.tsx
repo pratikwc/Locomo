@@ -37,7 +37,10 @@ export default function ReviewsPage() {
   const [replyText, setReplyText] = useState('');
   const [loadingAI, setLoadingAI] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
+  const [businessId, setBusinessId] = useState<string | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -46,58 +49,22 @@ export default function ReviewsPage() {
 
   const fetchReviews = async () => {
     try {
-      const mockReviews: Review[] = [
-        {
-          id: '1',
-          reviewer_name: 'Sarah Johnson',
-          reviewer_photo_url: null,
-          rating: 5,
-          review_text: 'Absolutely fantastic service! The team went above and beyond to help me. Highly recommend!',
-          review_date: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-          reply_text: null,
-          reply_status: 'pending',
-          ai_suggested_reply: null,
-          sentiment: 'positive',
-        },
-        {
-          id: '2',
-          reviewer_name: 'Michael Chen',
-          reviewer_photo_url: null,
-          rating: 4,
-          review_text: 'Good experience overall. Wait time was a bit long but staff were friendly.',
-          review_date: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-          reply_text: null,
-          reply_status: 'pending',
-          ai_suggested_reply: null,
-          sentiment: 'positive',
-        },
-        {
-          id: '3',
-          reviewer_name: 'Emily Davis',
-          reviewer_photo_url: null,
-          rating: 2,
-          review_text: 'Not what I expected. Service was slow and the product quality could be better.',
-          review_date: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-          reply_text: null,
-          reply_status: 'pending',
-          ai_suggested_reply: null,
-          sentiment: 'negative',
-        },
-        {
-          id: '4',
-          reviewer_name: 'Robert Wilson',
-          reviewer_photo_url: null,
-          rating: 5,
-          review_text: 'Best in the business! Been coming here for years and never disappointed.',
-          review_date: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
-          reply_text: 'Thank you so much for your continued support!',
-          reply_status: 'replied',
-          ai_suggested_reply: null,
-          sentiment: 'positive',
-        },
-      ];
+      setLoading(true);
 
-      setReviews(mockReviews);
+      const statusResponse = await fetch('/api/gmb/check-status');
+      const statusData = await statusResponse.json();
+
+      if (statusData.businesses && statusData.businesses.length > 0) {
+        const bizId = statusData.businesses[0].id;
+        setBusinessId(bizId);
+
+        const reviewsResponse = await fetch(`/api/reviews?businessId=${bizId}`);
+        const reviewsData = await reviewsResponse.json();
+
+        setReviews(reviewsData.reviews || []);
+      }
+
+      setLoading(false);
     } catch (error) {
       console.error('Error fetching reviews:', error);
       toast({
@@ -171,6 +138,39 @@ export default function ReviewsPage() {
     }
   };
 
+  const handleSyncReviews = async () => {
+    if (!businessId) return;
+
+    setSyncing(true);
+    try {
+      const response = await fetch('/api/gmb/sync-reviews', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ businessId }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        toast({
+          title: 'Sync Complete',
+          description: data.message,
+        });
+        await fetchReviews();
+      } else {
+        throw new Error(data.error);
+      }
+    } catch (error: any) {
+      toast({
+        title: 'Sync Failed',
+        description: error.message || 'Failed to sync reviews',
+        variant: 'destructive',
+      });
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const openReplyDialog = (review: Review) => {
     setSelectedReview(review);
     setReplyText(review.ai_suggested_reply || review.reply_text || '');
@@ -191,6 +191,14 @@ export default function ReviewsPage() {
     ),
   };
 
+  if (loading) {
+    return (
+      <div className="p-6 flex items-center justify-center">
+        <div className="animate-spin h-8 w-8 border-4 border-slate-300 border-t-slate-900 rounded-full"></div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
@@ -198,6 +206,10 @@ export default function ReviewsPage() {
           <h1 className="text-3xl font-bold text-gray-900">Reviews</h1>
           <p className="text-gray-500 mt-1">Manage and respond to customer reviews</p>
         </div>
+        <Button onClick={handleSyncReviews} disabled={syncing} variant="outline">
+          <Star className={`mr-2 h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
+          {syncing ? 'Syncing...' : 'Sync Reviews'}
+        </Button>
       </div>
 
       <div className="grid gap-6 md:grid-cols-4">

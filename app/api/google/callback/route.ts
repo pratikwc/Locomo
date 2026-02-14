@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { exchangeCodeForTokens, getUserInfo } from '@/lib/google-client';
 import { validateOAuthState } from '@/lib/oauth-state';
+import { getUserProfile, listGMBAccounts, listBusinessLocations, transformLocationToBusinessData } from '@/lib/gmb-client';
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -68,6 +69,16 @@ export async function GET(request: NextRequest) {
 
     const expiresAt = new Date(Date.now() + (tokenData.expires_in || 3600) * 1000);
 
+    console.log('[OAuth Callback] Fetching user profile from Google...');
+    const userProfile = await getUserProfile(tokenData.access_token);
+
+    console.log('[OAuth Callback] Checking for GMB accounts...');
+    const gmbAccounts = await listGMBAccounts(tokenData.access_token);
+    const hasGmbAccess = gmbAccounts.length > 0;
+    const gmbAccountName = hasGmbAccess ? gmbAccounts[0].name : null;
+
+    const onboardingStatus = hasGmbAccess ? 'completed' : 'no_account';
+
     const { data: existingAccount, error: fetchError } = await supabase
       .from('google_accounts')
       .select('*')
@@ -78,6 +89,8 @@ export async function GET(request: NextRequest) {
       console.error('[OAuth Callback] Database fetch error:', fetchError);
       throw new Error(`Database error: ${fetchError.message}`);
     }
+
+    let googleAccountId: string;
 
     if (existingAccount) {
       console.log('[OAuth Callback] Updating existing Google account:', existingAccount.id);
@@ -90,6 +103,11 @@ export async function GET(request: NextRequest) {
           refresh_token: tokenData.refresh_token || existingAccount.refresh_token,
           token_expires_at: expiresAt.toISOString(),
           scopes: tokenData.scope ? tokenData.scope.split(' ') : existingAccount.scopes,
+          display_name: userProfile.name,
+          profile_photo_url: userProfile.picture,
+          has_gmb_access: hasGmbAccess,
+          gmb_account_name: gmbAccountName,
+          onboarding_status: onboardingStatus,
           updated_at: new Date().toISOString(),
         })
         .eq('id', existingAccount.id);
@@ -98,9 +116,10 @@ export async function GET(request: NextRequest) {
         console.error('[OAuth Callback] Database update error:', updateError);
         throw new Error(`Failed to update account: ${updateError.message}`);
       }
+      googleAccountId = existingAccount.id;
     } else {
       console.log('[OAuth Callback] Creating new Google account');
-      const { error: insertError } = await supabase
+      const { data: newAccount, error: insertError } = await supabase
         .from('google_accounts')
         .insert({
           user_id: userId,
@@ -110,11 +129,62 @@ export async function GET(request: NextRequest) {
           refresh_token: tokenData.refresh_token,
           token_expires_at: expiresAt.toISOString(),
           scopes: tokenData.scope ? tokenData.scope.split(' ') : [],
-        });
+          display_name: userProfile.name,
+          profile_photo_url: userProfile.picture,
+          has_gmb_access: hasGmbAccess,
+          gmb_account_name: gmbAccountName,
+          onboarding_status: onboardingStatus,
+        })
+        .select('id')
+        .single();
 
-      if (insertError) {
+      if (insertError || !newAccount) {
         console.error('[OAuth Callback] Database insert error:', insertError);
-        throw new Error(`Failed to create account: ${insertError.message}`);
+        throw new Error(`Failed to create account: ${insertError?.message}`);
+      }
+      googleAccountId = newAccount.id;
+    }
+
+    if (hasGmbAccess && gmbAccountName) {
+      console.log('[OAuth Callback] Fetching business locations...');
+      const locations = await listBusinessLocations(tokenData.access_token, gmbAccountName);
+
+      if (locations.length > 0) {
+        console.log(`[OAuth Callback] Found ${locations.length} business location(s)`);
+
+        for (const location of locations) {
+          const businessData = transformLocationToBusinessData(location);
+
+          const { data: existingBusiness } = await supabase
+            .from('businesses')
+            .select('id')
+            .eq('business_id', businessData.businessId)
+            .eq('user_id', userId)
+            .maybeSingle();
+
+          if (existingBusiness) {
+            console.log('[OAuth Callback] Updating existing business:', businessData.name);
+            await supabase
+              .from('businesses')
+              .update({
+                ...businessData,
+                google_account_id: googleAccountId,
+                last_synced_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', existingBusiness.id);
+          } else {
+            console.log('[OAuth Callback] Creating new business:', businessData.name);
+            await supabase
+              .from('businesses')
+              .insert({
+                user_id: userId,
+                google_account_id: googleAccountId,
+                ...businessData,
+                last_synced_at: new Date().toISOString(),
+              });
+          }
+        }
       }
     }
 
