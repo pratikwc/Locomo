@@ -33,7 +33,7 @@ export function isOTPExpired(expiresAt: string): boolean {
 
 export async function getAuthenticatedUserId(request: NextRequest): Promise<string | null> {
   try {
-    const token = request.cookies.get('auth_token')?.value;
+    const token = request.cookies.get('auth-token')?.value;
 
     if (!token) {
       return null;
@@ -43,7 +43,7 @@ export async function getAuthenticatedUserId(request: NextRequest): Promise<stri
 
     if (!payload || !payload.userId) {
       return null;
-    }
+    } 
 
     return payload.userId as string;
   } catch (error) {

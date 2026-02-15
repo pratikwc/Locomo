@@ -101,6 +101,20 @@ export async function POST(request: NextRequest) {
       message: `Successfully synced ${syncedCount} review(s)`,
     });
   } catch (error: any) {
+    if (error?.gmbError?.code === 429) {
+      const retryMs = error.gmbError.retryAfter as number | undefined;
+      const retryAfter = retryMs ? String(Math.ceil(retryMs / 1000)) : undefined;
+
+      const headers: Record<string, string> = {};
+      if (retryAfter) headers['Retry-After'] = retryAfter;
+
+      console.warn('[Sync Reviews] Rate limited by Google API. Retry-After:', retryAfter);
+      return NextResponse.json(
+        { error: 'Rate limited by Google API. Please retry later.' },
+        { status: 429, headers }
+      );
+    }
+
     console.error('[Sync Reviews] Error:', error);
     return NextResponse.json(
       { error: error.message || 'Failed to sync reviews' },
