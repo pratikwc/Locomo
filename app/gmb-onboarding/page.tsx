@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { useAuth } from '@/contexts/auth-context';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { AlertCircle, CheckCircle2, ExternalLink, RefreshCw, Store, Loader2 } from 'lucide-react';
@@ -11,12 +12,25 @@ import { SimpleProgress } from '@/components/simple-progress';
 export default function GMBOnboardingPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { user, loading: authLoading, hasGoogleAccount } = useAuth();
   const [checking, setChecking] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [status, setStatus] = useState<any>(null);
   const [error, setError] = useState<any>(null);
   const [gmbVerified, setGmbVerified] = useState(false);
+
+  // Protect this page - require Google connection
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.replace('/login');
+      return;
+    }
+
+    if (!authLoading && user && hasGoogleAccount === false) {
+      router.replace('/google-connect');
+    }
+  }, [user, authLoading, hasGoogleAccount, router]);
 
   const syncBusinesses = async () => {
     setSyncing(true);
@@ -101,15 +115,18 @@ export default function GMBOnboardingPage() {
   };
 
   useEffect(() => {
-    const justConnected = searchParams.get('success') === 'google_connected';
+    // Only run if user is authenticated and has Google account
+    if (!authLoading && user && hasGoogleAccount === true) {
+      const justConnected = searchParams.get('success') === 'google_connected';
 
-    if (justConnected) {
-      // Automatically trigger verification after OAuth
-      verifyGMBAccess();
-    } else {
-      checkStatus();
+      if (justConnected) {
+        // Automatically trigger verification after OAuth
+        verifyGMBAccess();
+      } else {
+        checkStatus();
+      }
     }
-  }, []);
+  }, [authLoading, user, hasGoogleAccount]);
 
   const steps = [
     {
@@ -128,6 +145,20 @@ export default function GMBOnboardingPage() {
       description: 'Once verified, return here and check connection',
     },
   ];
+
+  // Show loading while checking auth and Google connection
+  if (authLoading || hasGoogleAccount === null) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+      </div>
+    );
+  }
+
+  // Don't render if no user or no Google account (will be redirected)
+  if (!user || hasGoogleAccount === false) {
+    return null;
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
