@@ -36,6 +36,31 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'GMB account not configured' }, { status: 400 });
     }
 
+    // Check sync cooldown (5 minutes)
+    const COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
+    if (googleAccount.last_reviews_sync_at) {
+      const lastSyncTime = new Date(googleAccount.last_reviews_sync_at).getTime();
+      const now = Date.now();
+      const timeSinceLastSync = now - lastSyncTime;
+
+      if (timeSinceLastSync < COOLDOWN_MS) {
+        const remainingMs = COOLDOWN_MS - timeSinceLastSync;
+        const remainingMinutes = Math.ceil(remainingMs / 60000);
+        const remainingSeconds = Math.ceil(remainingMs / 1000);
+
+        return NextResponse.json(
+          {
+            error: 'sync_cooldown',
+            message: `Please wait ${remainingMinutes} minute(s) before syncing reviews again`,
+            retryAfter: remainingMs,
+            remainingSeconds,
+            lastSyncedAt: googleAccount.last_reviews_sync_at,
+          },
+          { status: 429 }
+        );
+      }
+    }
+
     const accessToken = await getValidAccessToken(userId);
 
     if (!accessToken) {
@@ -95,26 +120,22 @@ export async function POST(request: NextRequest) {
       .update({ last_synced_at: new Date().toISOString() })
       .eq('id', businessId);
 
+    // Update sync timestamp and counter
+    await supabase
+      .from('google_accounts')
+      .update({
+        last_reviews_sync_at: new Date().toISOString(),
+        reviews_sync_count: (googleAccount.reviews_sync_count || 0) + 1,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', googleAccount.id);
+
     return NextResponse.json({
       success: true,
       synced: syncedCount,
       message: `Successfully synced ${syncedCount} review(s)`,
     });
   } catch (error: any) {
-    if (error?.gmbError?.code === 429) {
-      const retryMs = error.gmbError.retryAfter as number | undefined;
-      const retryAfter = retryMs ? String(Math.ceil(retryMs / 1000)) : undefined;
-
-      const headers: Record<string, string> = {};
-      if (retryAfter) headers['Retry-After'] = retryAfter;
-
-      console.warn('[Sync Reviews] Rate limited by Google API. Retry-After:', retryAfter);
-      return NextResponse.json(
-        { error: 'Rate limited by Google API. Please retry later.' },
-        { status: 429, headers }
-      );
-    }
-
     console.error('[Sync Reviews] Error:', error);
     return NextResponse.json(
       { error: error.message || 'Failed to sync reviews' },

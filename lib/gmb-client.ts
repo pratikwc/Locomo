@@ -174,24 +174,9 @@ async function fetchWithAuth(url: string, accessToken: string, options: RequestI
 
   if (!response.ok) {
     const errorText = await response.text();
-    const raHeader = response.headers.get('retry-after');
-    console.error(`[GMB] API Error - Status: ${response.status}, URL: ${url}, Response: ${errorText}, Retry-After: ${raHeader}`);
+    console.error(`[GMB] API Error - Status: ${response.status}, URL: ${url}, Response: ${errorText}`);
 
     const parsedError = parseGMBError(response.status, errorText);
-
-    if (raHeader) {
-      // Retry-After can be either delta-seconds or an HTTP-date. Convert to milliseconds.
-      const asInt = parseInt(raHeader, 10);
-      if (!isNaN(asInt)) {
-        parsedError.retryAfter = asInt * 1000; // seconds -> ms
-      } else {
-        const dateMs = Date.parse(raHeader);
-        if (!isNaN(dateMs)) {
-          parsedError.retryAfter = Math.max(0, dateMs - Date.now());
-        }
-      }
-    }
-
     const error = new Error(parsedError.userMessage) as Error & { gmbError: GMBApiError };
     error.gmbError = parsedError;
     throw error;
