@@ -39,10 +39,6 @@ export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [hasGMBAccess, setHasGMBAccess] = useState(true);
-  const [syncing, setSyncing] = useState(false);
-  const [syncError, setSyncError] = useState<string | null>(null);
-  const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
-  const [cooldownRemaining, setCooldownRemaining] = useState(0);
   const hasFetchedRef = useRef(false);
   const hasRedirectedRef = useRef(false);
   const hasCheckedSuccessRef = useRef(false);
@@ -112,8 +108,6 @@ export default function DashboardPage() {
           averageRating,
           pendingReviews,
         });
-
-        setLastSyncTime(statusData.last_synced);
       }
 
       setLoading(false);
@@ -121,54 +115,6 @@ export default function DashboardPage() {
       console.error('Error fetching dashboard data:', error);
       setLoading(false);
     }
-  };
-
-  const handleSyncBusinesses = async () => {
-    setSyncing(true);
-    setSyncError(null);
-
-    try {
-      const response = await fetch('/api/gmb/sync-businesses', { method: 'POST' });
-      const data = await response.json();
-
-      if (!response.ok) {
-        if (data.error === 'sync_cooldown') {
-          setSyncError(data.message);
-          setCooldownRemaining(data.remainingSeconds);
-          startCooldownTimer(data.remainingSeconds);
-        } else {
-          setSyncError(data.message || 'Failed to sync businesses');
-        }
-        return;
-      }
-
-      await fetchDashboardData();
-      setSyncError(null);
-    } catch (err: any) {
-      console.error('Error syncing businesses:', err);
-      setSyncError(err.message || 'Failed to sync businesses');
-    } finally {
-      setSyncing(false);
-    }
-  };
-
-  const startCooldownTimer = (seconds: number) => {
-    setCooldownRemaining(seconds);
-    const interval = setInterval(() => {
-      setCooldownRemaining((prev) => {
-        if (prev <= 1) {
-          clearInterval(interval);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-  };
-
-  const formatTimeRemaining = (seconds: number) => {
-    const minutes = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${minutes}:${secs.toString().padStart(2, '0')}`;
   };
 
   const getScoreColor = (score: number) => {
@@ -299,48 +245,7 @@ export default function DashboardPage() {
             Welcome back! Here's your business performance overview.
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          {lastSyncTime && (
-            <div className="text-sm text-slate-600">
-              Last synced: {format(new Date(lastSyncTime), 'MMM d, h:mm a')}
-            </div>
-          )}
-          <Button
-            onClick={handleSyncBusinesses}
-            disabled={syncing || cooldownRemaining > 0}
-            variant="outline"
-            size="sm"
-          >
-            {syncing ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Syncing...
-              </>
-            ) : cooldownRemaining > 0 ? (
-              <>
-                <RefreshCw className="mr-2 h-4 w-4" />
-                Available in {formatTimeRemaining(cooldownRemaining)}
-              </>
-            ) : (
-              <>
-                <RefreshCw className="mr-2 h-4 w-4" />
-                Sync Data
-              </>
-            )}
-          </Button>
-        </div>
       </div>
-
-      {syncError && (
-        <Card className="border-red-200 bg-red-50">
-          <CardContent className="pt-4">
-            <div className="flex items-center gap-3">
-              <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0" />
-              <p className="text-sm text-red-900">{syncError}</p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       <Card className="border-2 border-blue-100 bg-gradient-to-br from-blue-50 to-white">
         <CardHeader>

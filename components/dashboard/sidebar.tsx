@@ -24,7 +24,6 @@ interface NavItem {
   href: string;
   icon: React.ComponentType<{ className?: string }>;
   adminOnly?: boolean;
-  requiresGoogle?: boolean;
 }
 
 const navItems: NavItem[] = [
@@ -32,75 +31,57 @@ const navItems: NavItem[] = [
     title: 'Dashboard',
     href: '/dashboard',
     icon: LayoutDashboard,
-    requiresGoogle: true,
   },
   {
     title: 'Reviews',
     href: '/dashboard/reviews',
     icon: Star,
-    requiresGoogle: true,
   },
   {
     title: 'Posts',
     href: '/dashboard/posts',
     icon: FileText,
-    requiresGoogle: true,
   },
   {
     title: 'Keywords',
     href: '/dashboard/keywords',
     icon: TrendingUp,
-    requiresGoogle: true,
   },
   {
     title: 'Profile Editor',
     href: '/dashboard/profile',
     icon: Edit3,
-    requiresGoogle: false,
   },
   {
     title: 'Analytics',
     href: '/dashboard/analytics',
     icon: BarChart3,
-    requiresGoogle: true,
   },
   {
     title: 'Events',
     href: '/dashboard/events',
     icon: Calendar,
-    requiresGoogle: true,
   },
   {
     title: 'Admin',
     href: '/admin',
     icon: Users,
     adminOnly: true,
-    requiresGoogle: true,
   },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { user, logout, hasGoogleAccount } = useAuth();
+  const { user, logout } = useAuth();
 
   const handleLogout = async () => {
     await logout();
     window.location.href = '/login';
   };
 
-  const filteredNavItems = navItems.filter((item) => {
-    // Filter admin-only items
-    if (item.adminOnly && user?.role !== 'admin') {
-      return false;
-    }
-
-    // Filter items that require Google connection
-    if (item.requiresGoogle && hasGoogleAccount === false) {
-      return false;
-    }
-
-    return true;
-  });
+  const filteredNavItems = navItems.filter(
+    (item) => !item.adminOnly || user?.role === 'admin'
+  );
 
   return (
     <div className="flex h-full w-64 flex-col border-r bg-white">
@@ -115,19 +96,6 @@ export function Sidebar() {
 
       <ScrollArea className="flex-1 px-3 py-4">
         <nav className="space-y-1">
-          {hasGoogleAccount === false && (
-            <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-              <p className="text-xs text-amber-800 mb-2 font-medium">
-                Connect your Google account to unlock all features
-              </p>
-              <Link href="/google-connect">
-                <Button size="sm" className="w-full bg-amber-600 hover:bg-amber-700">
-                  Connect Google
-                </Button>
-              </Link>
-            </div>
-          )}
-
           {filteredNavItems.map((item) => {
             const Icon = item.icon;
             const isActive = pathname === item.href;
