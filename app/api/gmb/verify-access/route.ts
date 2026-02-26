@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
-import { discoverAccountsFromLocations, fetchWithRetry, GMBApiError } from '@/lib/gmb-client';
+import { listGMBAccounts, fetchWithRetry, GMBApiError } from '@/lib/gmb-client';
 import { refreshAccessToken } from '@/lib/google-client';
 
 export async function POST(request: NextRequest) {
@@ -84,22 +84,21 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Attempt to discover GMB account by checking for locations
+    // Attempt to list GMB accounts with retry logic
     try {
-      const result = await fetchWithRetry(
-        () => discoverAccountsFromLocations(accessToken),
+      const gmbAccounts = await fetchWithRetry(
+        () => listGMBAccounts(accessToken),
         3,
         2000
       );
 
-      const hasGmbAccess = result !== null && result.locations.length > 0;
-      const gmbAccountName = hasGmbAccess ? result.accountName : null;
+      const hasGmbAccess = gmbAccounts.length > 0;
+      const gmbAccountName = hasGmbAccess ? gmbAccounts[0].name : null;
       const onboardingStatus = hasGmbAccess ? 'completed' : 'no_account';
 
       console.log('[GMB Verify] Verification result:', {
         hasGmbAccess,
-        locationCount: result?.locations.length || 0,
-        accountName: gmbAccountName,
+        accountCount: gmbAccounts.length,
       });
 
       // Update the Google account with GMB access status
@@ -109,7 +108,7 @@ export async function POST(request: NextRequest) {
           has_gmb_access: hasGmbAccess,
           gmb_account_name: gmbAccountName,
           onboarding_status: onboardingStatus,
-          access_token: accessToken,
+          access_token: accessToken, // Update with fresh token
           updated_at: new Date().toISOString(),
         })
         .eq('id', googleAccount.id);
@@ -125,7 +124,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         hasGmbAccess,
-        locationCount: result?.locations.length || 0,
+        accountCount: gmbAccounts.length,
         onboardingStatus,
       });
     } catch (error: any) {

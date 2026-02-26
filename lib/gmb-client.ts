@@ -255,29 +255,6 @@ export async function listBusinessLocations(
   }
 }
 
-export async function discoverAccountsFromLocations(
-  accessToken: string
-): Promise<{ accountName: string; locations: GMBLocation[] } | null> {
-  try {
-    const userProfile = await getUserProfile(accessToken);
-    const accountName = `accounts/${userProfile.id}`;
-
-    const locations = await listBusinessLocations(accessToken, accountName);
-
-    if (locations.length > 0) {
-      return {
-        accountName,
-        locations
-      };
-    }
-
-    return null;
-  } catch (error) {
-    console.error('Error discovering accounts from locations:', error);
-    return null;
-  }
-}
-
 export async function getBusinessInfo(
   accessToken: string,
   locationName: string
