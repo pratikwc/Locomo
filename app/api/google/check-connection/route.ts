@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { verifyToken } from '@/lib/auth-utils';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { isTokenExpired } from '@/lib/google-token-manager';
+import { getUserProfile } from '@/lib/gmb-client';
 
 export async function GET(request: NextRequest) {
   try {
@@ -51,8 +52,32 @@ export async function GET(request: NextRequest) {
     const googleAccount = googleAccounts[0];
     const expired = await isTokenExpired(googleAccount.token_expires_at);
 
+    let googleAccountId = null;
+
+    // Try to get the Google account ID
+    if (googleAccount.access_token && !expired) {
+      try {
+        const userProfile = await getUserProfile(googleAccount.access_token);
+        googleAccountId = `accounts/${userProfile.id}`;
+      } catch (error) {
+        console.error('[Check Connection] Failed to get user profile:', error);
+      }
+    }
+
+    // Calculate expiry information
+    const expiryDate = googleAccount.token_expires_at;
+    const now = new Date();
+    const expiresInSeconds = expiryDate
+      ? Math.max(0, Math.floor((new Date(expiryDate).getTime() - now.getTime()) / 1000))
+      : 0;
+
     return NextResponse.json({
       connected: true,
+      googleAccountId,
+      isExpired: expired,
+      expiryDate,
+      expiresIn: expiresInSeconds,
+      hasRefreshToken: !!googleAccount.refresh_token,
       account: {
         email: googleAccount.email,
         connectedAt: googleAccount.created_at,
