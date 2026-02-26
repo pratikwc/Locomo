@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { getAuthenticatedUserId } from '@/lib/auth-utils';
-import { listGMBAccounts, listBusinessLocations, transformLocationToBusinessData, fetchWithRetry, GMBApiError } from '@/lib/gmb-client';
+import { discoverAccountsFromLocations, transformLocationToBusinessData, fetchWithRetry, GMBApiError } from '@/lib/gmb-client';
 import { getValidAccessToken } from '@/lib/google-token-manager';
 import { getCachedData, setCachedData } from '@/lib/gmb-cache';
 
@@ -44,78 +44,33 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Try to get accounts from cache first
-    let gmbAccounts = await getCachedData<any[]>(userId, 'gmb-accounts', {});
+    // Try to get account and locations from cache first
+    let result = await getCachedData<{ accountName: string; locations: any[] }>(userId, 'gmb-account-locations', {});
 
-    if (!gmbAccounts) {
+    if (!result) {
       try {
-        gmbAccounts = await fetchWithRetry(
-          () => listGMBAccounts(accessToken),
-          3,
-          2000
-        );
-
-        // Cache the result
-        await setCachedData(userId, 'gmb-accounts', {}, gmbAccounts, { ttlMinutes: 5 });
-      } catch (error: any) {
-        const gmbError = error.gmbError as GMBApiError | undefined;
-        console.error('[Sync Businesses] Error fetching GMB accounts:', error);
-
-        if (gmbError) {
-          return NextResponse.json(
-            {
-              error: 'gmb_api_error',
-              message: gmbError.userMessage,
-              code: gmbError.code,
-              retryable: gmbError.retryable,
-              retryAfter: gmbError.retryAfter,
-              recoverySteps: gmbError.recoverySteps,
-            },
-            { status: gmbError.code }
-          );
-        }
-
-        return NextResponse.json(
-          {
-            error: error.message || 'Failed to fetch GMB accounts',
-            details: 'Check server logs for details.'
-          },
-          { status: 500 }
-        );
-      }
-    } else {
-      console.log('[Sync Businesses] Using cached GMB accounts');
-    }
-
-    if (gmbAccounts.length === 0) {
-      return NextResponse.json(
-        {
-          error: 'No GMB accounts found',
-          message: 'Your Google account is connected but no Business Profile accounts were found. Please ensure you have created a Google Business Profile and have the necessary permissions.',
-          helpUrl: 'https://support.google.com/business/answer/2911778'
-        },
-        { status: 404 }
-      );
-    }
-
-    const gmbAccountName = gmbAccounts[0].name;
-
-    // Try to get locations from cache first
-    let locations = await getCachedData<any[]>(userId, 'gmb-locations', { accountName: gmbAccountName });
-
-    if (!locations) {
-      try {
-        locations = await fetchWithRetry(
-          () => listBusinessLocations(accessToken, gmbAccountName),
+        result = await fetchWithRetry(
+          () => discoverAccountsFromLocations(accessToken),
           3,
           3000
         );
 
+        if (!result) {
+          return NextResponse.json(
+            {
+              error: 'No GMB account found',
+              message: 'Your Google account is connected but no Business Profile was found. Please ensure you have created a Google Business Profile and have the necessary permissions.',
+              helpUrl: 'https://support.google.com/business/answer/2911778'
+            },
+            { status: 404 }
+          );
+        }
+
         // Cache the result for 1 hour
-        await setCachedData(userId, 'gmb-locations', { accountName: gmbAccountName }, locations, { ttlMinutes: 60 });
+        await setCachedData(userId, 'gmb-account-locations', {}, result, { ttlMinutes: 60 });
       } catch (error: any) {
         const gmbError = error.gmbError as GMBApiError | undefined;
-        console.error('[Sync Businesses] Error fetching locations:', error);
+        console.error('[Sync Businesses] Error discovering account:', error);
 
         if (gmbError) {
           return NextResponse.json(
@@ -133,15 +88,17 @@ export async function POST(request: NextRequest) {
 
         return NextResponse.json(
           {
-            error: error.message || 'Failed to fetch business locations',
+            error: error.message || 'Failed to fetch business information',
             details: 'Check server logs for details.'
           },
           { status: 500 }
         );
       }
     } else {
-      console.log('[Sync Businesses] Using cached business locations');
+      console.log('[Sync Businesses] Using cached account and locations');
     }
+
+    const { accountName: gmbAccountName, locations } = result;
 
     let syncedCount = 0;
 
