@@ -84,18 +84,24 @@ export function Sidebar() {
   );
 
   return (
-    <div className="flex h-full w-64 flex-col border-r bg-white">
-      <div className="flex h-16 items-center border-b px-6">
+    <div className="flex h-full w-64 flex-col border-r bg-gray-50">
+      <div className="flex h-16 items-center justify-between border-b bg-white px-4">
         <div className="flex items-center space-x-2">
           <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-cyan-600 rounded-lg flex items-center justify-center">
-            <span className="text-lg font-bold text-white">L</span>
+            <span className="text-lg font-bold text-white">G</span>
           </div>
-          <span className="text-xl font-bold">Locomo</span>
+          <span className="text-lg font-bold">GrowthPro AI</span>
         </div>
       </div>
 
-      <ScrollArea className="flex-1 px-3 py-4">
-        <nav className="space-y-1">
+      <div className="px-3 pt-4 pb-2">
+        <p className="px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+          Workspace
+        </p>
+      </div>
+
+      <ScrollArea className="flex-1 px-3">
+        <nav className="space-y-1 pb-4">
           {filteredNavItems.map((item) => {
             const Icon = item.icon;
             const isActive = pathname === item.href;
@@ -107,11 +113,11 @@ export function Sidebar() {
                 className={cn(
                   'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
                   isActive
-                    ? 'bg-blue-50 text-blue-700'
-                    : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
+                    ? 'bg-green-50 text-green-700 shadow-sm'
+                    : 'text-gray-700 hover:bg-gray-100'
                 )}
               >
-                <Icon className="h-5 w-5" />
+                <Icon className="h-4 w-4" />
                 {item.title}
               </Link>
             );
@@ -119,21 +125,37 @@ export function Sidebar() {
         </nav>
       </ScrollArea>
 
-      <div className="border-t p-4 space-y-2">
-        <Link href="/dashboard/settings">
-          <Button variant="ghost" className="w-full justify-start">
-            <Settings className="mr-2 h-5 w-5" />
+      <div className="border-t bg-white p-3 space-y-2">
+        <Link href="/dashboard/settings" className="block">
+          <Button variant="ghost" className="w-full justify-start text-sm h-9">
+            <Settings className="mr-2 h-4 w-4" />
             Settings
           </Button>
         </Link>
         <Button
           variant="ghost"
-          className="w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50"
+          className="w-full justify-start text-sm h-9 text-red-600 hover:text-red-700 hover:bg-red-50"
           onClick={handleLogout}
         >
-          <LogOut className="mr-2 h-5 w-5" />
+          <LogOut className="mr-2 h-4 w-4" />
           Logout
         </Button>
+      </div>
+
+      <div className="border-t bg-white p-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-green-400 to-green-600 flex items-center justify-center text-white font-semibold">
+            {user?.phoneNumber?.slice(-2) || 'U'}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-gray-900 truncate">
+              {user?.phoneNumber || 'User'}
+            </p>
+            <p className="text-xs text-gray-500">
+              {user?.role === 'admin' ? 'Administrator' : 'User'}
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   );

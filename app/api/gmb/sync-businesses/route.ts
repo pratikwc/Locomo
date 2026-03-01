@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { supabaseAdmin } from '@/lib/supabase-admin';
 import { getAuthenticatedUserId } from '@/lib/auth-utils';
 import { discoverAccountsFromLocations, transformLocationToBusinessData, fetchWithRetry, GMBApiError } from '@/lib/gmb-client';
 import { getValidAccessToken } from '@/lib/google-token-manager';
@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { data: googleAccounts, error: accountError } = await supabase
+    const { data: googleAccounts, error: accountError } = await supabaseAdmin
       .from('google_accounts')
       .select('*')
       .eq('user_id', userId)
@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
     for (const location of locations) {
       const businessData = transformLocationToBusinessData(location);
 
-      const { data: existingBusiness } = await supabase
+      const { data: existingBusiness } = await supabaseAdmin
         .from('businesses')
         .select('id')
         .eq('business_id', businessData.businessId)
@@ -113,24 +113,53 @@ export async function POST(request: NextRequest) {
         .maybeSingle();
 
       if (existingBusiness) {
-        await supabase
+        const { error: updateError } = await supabaseAdmin
           .from('businesses')
           .update({
-            ...businessData,
+            name: businessData.name,
+            category: businessData.category,
+            additional_categories: businessData.additionalCategories,
+            address: businessData.address,
+            phone: businessData.phone,
+            website: businessData.website,
+            description: businessData.description,
+            hours: businessData.hours,
+            latitude: businessData.latitude,
+            longitude: businessData.longitude,
+            profile_completeness: businessData.profileCompleteness,
             google_account_id: googleAccount.id,
             last_synced_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           })
           .eq('id', existingBusiness.id);
+
+        if (updateError) {
+          console.error('[Sync Businesses] Update error:', updateError);
+        }
       } else {
-        await supabase
+        const { error: insertError } = await supabaseAdmin
           .from('businesses')
           .insert({
             user_id: userId,
             google_account_id: googleAccount.id,
-            ...businessData,
+            business_id: businessData.businessId,
+            name: businessData.name,
+            category: businessData.category,
+            additional_categories: businessData.additionalCategories,
+            address: businessData.address,
+            phone: businessData.phone,
+            website: businessData.website,
+            description: businessData.description,
+            hours: businessData.hours,
+            latitude: businessData.latitude,
+            longitude: businessData.longitude,
+            profile_completeness: businessData.profileCompleteness,
             last_synced_at: new Date().toISOString(),
           });
+
+        if (insertError) {
+          console.error('[Sync Businesses] Insert error:', insertError);
+        }
       }
 
       syncedCount++;
