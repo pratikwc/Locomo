@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/button';
 import { SimpleProgress } from '@/components/simple-progress';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { LoadingScreen } from '@/components/loading-screen';
+import { GoogleConnectionCards } from '@/components/dashboard/google-connection-cards';
 import {
   Download,
   TrendingUp,
@@ -33,14 +35,25 @@ interface DashboardData {
   pendingReviews: number;
 }
 
+interface LoadingStep {
+  label: string;
+  status: 'completed' | 'loading' | 'pending';
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const { hasGoogleAccount, loading: authLoading, checkGoogleConnection } = useAuth();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [hasGMBAccess, setHasGMBAccess] = useState(true);
+  const [loadingSteps, setLoadingSteps] = useState<LoadingStep[]>([
+    { label: 'Authentication verified', status: 'loading' },
+    { label: 'Checking Google connection', status: 'pending' },
+    { label: 'Loading locations', status: 'pending' },
+  ]);
+  const [loadingProgress, setLoadingProgress] = useState(33);
+  const [showGoogleConnect, setShowGoogleConnect] = useState(false);
   const hasFetchedRef = useRef(false);
-  const hasRedirectedRef = useRef(false);
   const hasCheckedSuccessRef = useRef(false);
 
   useEffect(() => {
@@ -55,21 +68,51 @@ export default function DashboardPage() {
   }, [checkGoogleConnection]);
 
   useEffect(() => {
-    if (authLoading || hasGoogleAccount === null) {
-      return;
-    }
+    const initializeDashboard = async () => {
+      if (authLoading || hasGoogleAccount === null) {
+        return;
+      }
 
-    if (hasGoogleAccount === false && !hasRedirectedRef.current) {
-      hasRedirectedRef.current = true;
-      router.replace('/google-connect');
-      return;
-    }
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      setLoadingSteps(prev => prev.map((step, i) =>
+        i === 0 ? { ...step, status: 'completed' } : step
+      ));
+      setLoadingProgress(67);
 
-    if (hasGoogleAccount === true && !hasFetchedRef.current) {
-      hasFetchedRef.current = true;
-      fetchDashboardData();
-    }
-  }, [hasGoogleAccount, authLoading, router]);
+      await new Promise(resolve => setTimeout(resolve, 500));
+      setLoadingSteps(prev => prev.map((step, i) =>
+        i === 1 ? { ...step, status: 'loading' } : step
+      ));
+
+      if (hasGoogleAccount === false) {
+        setShowGoogleConnect(true);
+        setLoading(false);
+        return;
+      }
+
+      setLoadingSteps(prev => prev.map((step, i) =>
+        i === 1 ? { ...step, status: 'completed' } : step
+      ));
+      setLoadingProgress(87);
+
+      await new Promise(resolve => setTimeout(resolve, 500));
+      setLoadingSteps(prev => prev.map((step, i) =>
+        i === 2 ? { ...step, status: 'loading' } : step
+      ));
+
+      if (hasGoogleAccount === true && !hasFetchedRef.current) {
+        hasFetchedRef.current = true;
+        await fetchDashboardData();
+      }
+
+      setLoadingSteps(prev => prev.map((step, i) =>
+        i === 2 ? { ...step, status: 'completed' } : step
+      ));
+      setLoadingProgress(100);
+    };
+
+    initializeDashboard();
+  }, [hasGoogleAccount, authLoading]);
 
   const fetchDashboardData = async () => {
     try {
@@ -129,10 +172,14 @@ export default function DashboardPage() {
     return 'Needs Improvement';
   };
 
-  if (authLoading || hasGoogleAccount === null) {
+  if (loading) {
+    return <LoadingScreen steps={loadingSteps} progress={loadingProgress} />;
+  }
+
+  if (showGoogleConnect) {
     return (
-      <div className="p-6 flex items-center justify-center min-h-screen">
-        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+      <div className="p-6 flex items-center justify-center min-h-[calc(100vh-4rem)]">
+        <GoogleConnectionCards onConnectSuccess={checkGoogleConnection} />
       </div>
     );
   }
@@ -152,14 +199,6 @@ export default function DashboardPage() {
             </Button>
           </CardContent>
         </Card>
-      </div>
-    );
-  }
-
-  if (loading) {
-    return (
-      <div className="p-6 flex items-center justify-center">
-        <RefreshCw className="h-8 w-8 animate-spin text-slate-400" />
       </div>
     );
   }
