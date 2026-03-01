@@ -50,7 +50,7 @@ export default function LoginPage() {
 
     try {
       await login(phoneNumber, otpCode);
-      router.push('/google-connect');
+      router.push('/onboarding');
     } catch (err) {
       console.error('Verify OTP error:', err);
     } finally {
