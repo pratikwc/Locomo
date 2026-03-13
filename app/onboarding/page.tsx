@@ -109,7 +109,7 @@ export default function OnboardingPage() {
             </h1>
           </div>
           <p className="text-muted-foreground text-lg">
-            Let's set up your multi-location growth platform
+            Let&apos;s set up your multi-location growth platform
           </p>
         </div>
 

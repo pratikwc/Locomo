@@ -363,7 +363,7 @@ export default function ReviewsPage() {
           <DialogHeader>
             <DialogTitle>Reply to Review</DialogTitle>
             <DialogDescription>
-              Write a thoughtful response to {selectedReview?.reviewer_name}'s review
+              Write a thoughtful response to {selectedReview?.reviewer_name}&apos;s review
             </DialogDescription>
           </DialogHeader>
 
@@ -411,7 +411,7 @@ export default function ReviewsPage() {
                   className="resize-none"
                 />
                 <p className="text-xs text-gray-500">
-                  Be professional, empathetic, and address the customer's concerns.
+                  Be professional, empathetic, and address the customer&apos;s concerns.
                 </p>
               </div>
             </div>

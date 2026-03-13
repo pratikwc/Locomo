@@ -13,7 +13,7 @@ export function StepComplete({ onComplete }: StepCompleteProps) {
       <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6">
         <Check className="h-10 w-10 text-primary" />
       </div>
-      <h3 className="text-2xl font-bold">You're All Set!</h3>
+      <h3 className="text-2xl font-bold">You&apos;re All Set!</h3>
       <p className="text-muted-foreground text-lg max-w-md mx-auto">
         Your Growmatiq workspace is ready. Start managing your locations, reviews, and grow your local presence with AI.
       </p>
