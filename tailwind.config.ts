@@ -60,6 +60,12 @@ const config: Config = {
           '4': 'hsl(var(--chart-4))',
           '5': 'hsl(var(--chart-5))',
         },
+        growmatiq: {
+          purple: '#6931FF',
+          dark: '#0d0a0b',
+          beige: '#f5f1ed',
+          taupe: '#706c61',
+        },
       },
       keyframes: {
         'accordion-down': {
