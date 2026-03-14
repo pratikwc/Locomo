@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/auth-context';
 import { useWorkspace } from '@/contexts/workspace-context';
 import { Card } from '@/components/ui/card';
@@ -14,6 +14,7 @@ import { StepSelectLocations } from '@/components/onboarding/step-select-locatio
 import { StepBrandIntelligence } from '@/components/onboarding/step-brand-intelligence';
 import { StepAgentConfiguration } from '@/components/onboarding/step-agent-configuration';
 import { StepComplete } from '@/components/onboarding/step-complete';
+import { toast } from 'sonner';
 
 type OnboardingStep =
   | 'create_workspace'
@@ -34,11 +35,13 @@ const steps: { id: OnboardingStep; title: string; description: string }[] = [
 
 export default function OnboardingPage() {
   const router = useRouter();
-  const { user, loading: authLoading } = useAuth();
-  const { workspace, refreshWorkspace } = useWorkspace();
+  const searchParams = useSearchParams();
+  const { user, loading: authLoading, hasGoogleAccount, checkGoogleConnection } = useAuth();
+  const { workspace, refreshWorkspace, isLoading: workspaceLoading } = useWorkspace();
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [completedSteps, setCompletedSteps] = useState<Set<OnboardingStep>>(new Set());
   const [stepData, setStepData] = useState<Record<string, any>>({});
+  const [initializing, setInitializing] = useState(true);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -47,13 +50,48 @@ export default function OnboardingPage() {
   }, [user, authLoading, router]);
 
   useEffect(() => {
-    if (workspace) {
-      setCurrentStepIndex(1);
-      setCompletedSteps(prev => new Set(prev).add('create_workspace'));
-    }
-  }, [workspace]);
+    const googleConnected = searchParams.get('google_connected');
+    const error = searchParams.get('error');
+    const message = searchParams.get('message');
 
-  if (authLoading) {
+    if (googleConnected === 'true') {
+      toast.success('Google account connected successfully!');
+      checkGoogleConnection();
+      router.replace('/onboarding');
+    } else if (error) {
+      toast.error(message || 'Failed to connect Google account');
+      router.replace('/onboarding');
+    }
+  }, [searchParams, checkGoogleConnection, router]);
+
+  useEffect(() => {
+    const initializeOnboarding = async () => {
+      if (authLoading || workspaceLoading) return;
+
+      const completed = new Set<OnboardingStep>();
+      let startIndex = 0;
+
+      if (workspace) {
+        completed.add('create_workspace');
+        startIndex = 1;
+
+        await checkGoogleConnection();
+
+        if (hasGoogleAccount) {
+          completed.add('connect_google');
+          startIndex = 2;
+        }
+      }
+
+      setCompletedSteps(completed);
+      setCurrentStepIndex(startIndex);
+      setInitializing(false);
+    };
+
+    initializeOnboarding();
+  }, [workspace, workspaceLoading, authLoading, hasGoogleAccount, checkGoogleConnection]);
+
+  if (authLoading || initializing) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />

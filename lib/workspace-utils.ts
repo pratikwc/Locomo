@@ -45,6 +45,16 @@ export async function createWorkspace(data: CreateWorkspaceData, userId: string)
   return workspace;
 }
 
+export async function getOrCreateWorkspace(data: CreateWorkspaceData, userId: string) {
+  const existingWorkspaces = await getUserWorkspaces(userId);
+
+  if (existingWorkspaces.length > 0) {
+    return existingWorkspaces[0];
+  }
+
+  return await createWorkspace(data, userId);
+}
+
 export async function getUserWorkspaces(userId: string) {
   const { data, error } = await supabase
     .from('workspace_members')

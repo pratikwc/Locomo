@@ -83,8 +83,17 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
   const refreshWorkspace = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      const response = await fetch('/api/auth/me');
+      if (!response.ok) {
+        setIsLoading(false);
+        return;
+      }
+
+      const { user } = await response.json();
+      if (!user) {
+        setIsLoading(false);
+        return;
+      }
 
       const { data: memberData } = await supabase
         .from('workspace_members')

@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Loader as Loader2 } from 'lucide-react';
-import { createWorkspace } from '@/lib/workspace-utils';
+import { getOrCreateWorkspace } from '@/lib/workspace-utils';
 import { toast } from 'sonner';
 
 interface StepCreateWorkspaceProps {
@@ -41,9 +41,9 @@ export function StepCreateWorkspace({ onNext }: StepCreateWorkspaceProps) {
     setLoading(true);
 
     try {
-      const workspace = await createWorkspace(formData, user.id);
+      const workspace = await getOrCreateWorkspace(formData, user.id);
       await refreshWorkspace();
-      toast.success('Workspace created successfully!');
+      toast.success('Workspace ready!');
       onNext(formData);
     } catch (error: any) {
       toast.error(error.message || 'Failed to create workspace');

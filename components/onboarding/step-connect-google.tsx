@@ -9,8 +9,19 @@ interface StepConnectGoogleProps {
 }
 
 export function StepConnectGoogle({ onNext, onSkip }: StepConnectGoogleProps) {
-  const handleConnect = () => {
-    window.location.href = '/api/google/auth-url';
+  const handleConnect = async () => {
+    try {
+      const response = await fetch('/api/google/auth-url?return_to=onboarding');
+      const data = await response.json();
+
+      if (data.authUrl) {
+        window.location.href = data.authUrl;
+      } else {
+        console.error('Failed to get auth URL');
+      }
+    } catch (error) {
+      console.error('Error fetching auth URL:', error);
+    }
   };
 
   return (
