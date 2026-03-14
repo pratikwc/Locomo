@@ -166,6 +166,8 @@ export async function GET(request: NextRequest) {
 
     const redirectUrl = returnTo === 'onboarding'
       ? '/onboarding?google_connected=true'
+      : returnTo === 'dashboard'
+      ? '/dashboard?success=google_connected'
       : '/gmb-onboarding?success=google_connected';
 
     return NextResponse.redirect(new URL(redirectUrl, request.url));
@@ -175,6 +177,8 @@ export async function GET(request: NextRequest) {
 
     const errorUrl = returnTo === 'onboarding'
       ? `/onboarding?error=auth_failed&message=${encodeURIComponent(message)}`
+      : returnTo === 'dashboard'
+      ? `/dashboard?error=auth_failed&message=${encodeURIComponent(message)}`
       : `/google-connect?error=auth_failed&message=${encodeURIComponent(message)}`;
 
     return NextResponse.redirect(

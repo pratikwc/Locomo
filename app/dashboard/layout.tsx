@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/auth-context';
 import { useWorkspace } from '@/contexts/workspace-context';
@@ -8,6 +8,7 @@ import { GrowmatiqSidebar } from '@/components/dashboard/growmatiq-sidebar';
 import { LocationSwitcher } from '@/components/location-switcher';
 import { Loader as Loader2, Bell } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { getOrCreateWorkspace } from '@/lib/workspace-utils';
 
 export default function DashboardLayout({
   children,
@@ -16,7 +17,8 @@ export default function DashboardLayout({
 }) {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
-  const { workspace, isLoading: workspaceLoading } = useWorkspace();
+  const { workspace, isLoading: workspaceLoading, refreshWorkspace } = useWorkspace();
+  const [creatingWorkspace, setCreatingWorkspace] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -25,12 +27,30 @@ export default function DashboardLayout({
   }, [user, authLoading, router]);
 
   useEffect(() => {
-    if (!authLoading && user && !workspaceLoading && !workspace) {
-      router.replace('/onboarding');
-    }
-  }, [user, authLoading, workspace, workspaceLoading, router]);
+    const createDefaultWorkspace = async () => {
+      if (!authLoading && user && !workspaceLoading && !workspace && !creatingWorkspace) {
+        setCreatingWorkspace(true);
+        try {
+          await getOrCreateWorkspace(
+            {
+              name: `${user.phoneNumber}'s Workspace`,
+              description: 'My workspace',
+            },
+            user.id
+          );
+          await refreshWorkspace();
+        } catch (error) {
+          console.error('Failed to create workspace:', error);
+        } finally {
+          setCreatingWorkspace(false);
+        }
+      }
+    };
 
-  if (authLoading || workspaceLoading) {
+    createDefaultWorkspace();
+  }, [user, authLoading, workspace, workspaceLoading, creatingWorkspace, refreshWorkspace]);
+
+  if (authLoading || workspaceLoading || creatingWorkspace) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
@@ -41,16 +61,24 @@ export default function DashboardLayout({
     );
   }
 
-  if (!user || !workspace) {
+  if (!user) {
     return null;
   }
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
-      <GrowmatiqSidebar />
+      {workspace && <GrowmatiqSidebar />}
       <div className="flex-1 flex flex-col overflow-hidden">
         <header className="h-16 border-b bg-card flex items-center justify-between px-6">
-          <LocationSwitcher />
+          {workspace && <LocationSwitcher />}
+          {!workspace && (
+            <div className="flex items-center gap-2">
+              <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center">
+                <span className="text-xl font-bold text-primary-foreground">G</span>
+              </div>
+              <h1 className="text-xl font-bold">Growmatiq</h1>
+            </div>
+          )}
           <div className="flex items-center gap-3">
             <Button variant="ghost" size="icon" className="relative">
               <Bell className="h-5 w-5" />
