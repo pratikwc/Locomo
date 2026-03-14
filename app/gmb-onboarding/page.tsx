@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { CircleAlert as AlertCircle, CircleCheck as CheckCircle2, ExternalLink, RefreshCw, Store, Loader as Loader2 } from 'lucide-react';
+import { AlertCircle, CheckCircle2, ExternalLink, RefreshCw, Store, Loader2 } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { SimpleProgress } from '@/components/simple-progress';
 
@@ -111,7 +111,7 @@ export default function GMBOnboardingPage() {
           <Store className="h-16 w-16 mx-auto text-slate-700" />
           <h1 className="text-4xl font-bold text-slate-900">Set Up Google Business Profile</h1>
           <p className="text-slate-600 text-lg">
-            Let&apos;s get your business on Google Maps and Search
+            Let's get your business on Google Maps and Search
           </p>
         </div>
 
@@ -175,7 +175,7 @@ export default function GMBOnboardingPage() {
             <AlertCircle className="h-4 w-4 text-amber-600" />
             <AlertTitle className="text-amber-900">No Google Business Profile Found</AlertTitle>
             <AlertDescription className="text-amber-800">
-              We couldn&apos;t find a Google Business Profile linked to your account. Follow the steps below to create one.
+              We couldn't find a Google Business Profile linked to your account. Follow the steps below to create one.
             </AlertDescription>
           </Alert>
         )}

@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/auth-context';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader as Loader2, CircleCheck as CheckCircle2 } from 'lucide-react';
+import { Loader2, CheckCircle2 } from 'lucide-react';
 
 export default function GoogleConnectPage() {
   const router = useRouter();
@@ -163,7 +163,7 @@ export default function GoogleConnectPage() {
 
           <Card className="bg-white shadow-lg">
             <CardHeader>
-              <CardTitle className="text-xl">What You&apos;ll Get</CardTitle>
+              <CardTitle className="text-xl">What You'll Get</CardTitle>
               <CardDescription>
                 Powerful tools to manage and grow your local business presence
               </CardDescription>

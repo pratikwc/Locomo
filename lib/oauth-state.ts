@@ -4,21 +4,19 @@ export interface OAuthState {
   userId: string;
   timestamp: number;
   nonce: string;
-  returnTo?: string;
 }
 
-export function createOAuthState(userId: string, returnTo?: string): string {
+export function createOAuthState(userId: string): string {
   const state: OAuthState = {
     userId,
     timestamp: Date.now(),
     nonce: crypto.randomBytes(16).toString('hex'),
-    returnTo,
   };
 
   return Buffer.from(JSON.stringify(state)).toString('base64url');
 }
 
-export function validateOAuthState(stateString: string): { valid: boolean; userId?: string; returnTo?: string; error?: string } {
+export function validateOAuthState(stateString: string): { valid: boolean; userId?: string; error?: string } {
   try {
     const decoded = Buffer.from(stateString, 'base64url').toString('utf-8');
     const state: OAuthState = JSON.parse(decoded);
@@ -32,7 +30,7 @@ export function validateOAuthState(stateString: string): { valid: boolean; userI
       return { valid: false, error: 'State has expired' };
     }
 
-    return { valid: true, userId: state.userId, returnTo: state.returnTo };
+    return { valid: true, userId: state.userId };
   } catch (error) {
     return { valid: false, error: 'Failed to parse state' };
   }

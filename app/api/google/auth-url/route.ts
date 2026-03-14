@@ -23,11 +23,10 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const returnTo = request.nextUrl.searchParams.get('return_to');
-    const state = createOAuthState(payload.userId, returnTo || undefined);
+    const state = createOAuthState(payload.userId);
     const authUrl = getGoogleAuthUrl(state);
 
-    console.log('[OAuth] Generated auth URL for user:', payload.userId, 'returnTo:', returnTo);
+    console.log('[OAuth] Generated auth URL for user:', payload.userId);
 
     return NextResponse.json({ authUrl });
   } catch (error) {

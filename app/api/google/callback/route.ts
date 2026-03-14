@@ -45,8 +45,7 @@ export async function GET(request: NextRequest) {
   }
 
   const userId = stateValidation.userId!;
-  const returnTo = stateValidation.returnTo;
-  console.log('[OAuth Callback] Processing callback for user:', userId, 'returnTo:', returnTo);
+  console.log('[OAuth Callback] Processing callback for user:', userId);
 
   try {
     console.log('[OAuth Callback] Exchanging code for tokens...');
@@ -163,26 +162,12 @@ export async function GET(request: NextRequest) {
     }
 
     console.log('[OAuth Callback] Successfully connected Google account. GMB verification will happen asynchronously.');
-
-    const redirectUrl = returnTo === 'onboarding'
-      ? '/onboarding?google_connected=true'
-      : returnTo === 'dashboard'
-      ? '/dashboard?success=google_connected'
-      : '/gmb-onboarding?success=google_connected';
-
-    return NextResponse.redirect(new URL(redirectUrl, request.url));
+    return NextResponse.redirect(new URL('/gmb-onboarding?success=google_connected', request.url));
   } catch (error: any) {
     console.error('[OAuth Callback] Error processing callback:', error);
     const message = error.message || 'Failed to connect Google account';
-
-    const errorUrl = returnTo === 'onboarding'
-      ? `/onboarding?error=auth_failed&message=${encodeURIComponent(message)}`
-      : returnTo === 'dashboard'
-      ? `/dashboard?error=auth_failed&message=${encodeURIComponent(message)}`
-      : `/google-connect?error=auth_failed&message=${encodeURIComponent(message)}`;
-
     return NextResponse.redirect(
-      new URL(errorUrl, request.url)
+      new URL(`/google-connect?error=auth_failed&message=${encodeURIComponent(message)}`, request.url)
     );
   }
 }

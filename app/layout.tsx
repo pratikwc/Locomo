@@ -2,14 +2,13 @@ import './globals.css';
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import { AuthProvider } from '@/contexts/auth-context';
-import { WorkspaceProvider } from '@/contexts/workspace-context';
 import { Toaster } from '@/components/ui/toaster';
 
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'Growmatiq - AI-Powered Local Growth Platform',
-  description: 'Multi-location AI growth operating system for businesses and agencies',
+  title: 'Locomo - AI-Powered Marketing Platform',
+  description: 'Help local businesses improve their Google My Business profile visibility',
   openGraph: {
     images: [
       {
@@ -36,10 +35,8 @@ export default function RootLayout({
     <html lang="en">
       <body className={inter.className}>
         <AuthProvider>
-          <WorkspaceProvider>
-            {children}
-            <Toaster />
-          </WorkspaceProvider>
+          {children}
+          <Toaster />
         </AuthProvider>
       </body>
     </html>

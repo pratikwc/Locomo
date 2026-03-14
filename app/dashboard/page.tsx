@@ -9,10 +9,22 @@ import { SimpleProgress } from '@/components/simple-progress';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { LoadingScreen } from '@/components/loading-screen';
-import { GoogleConnectPrompt } from '@/components/dashboard/google-connect-prompt';
-import { Download, TrendingUp, TrendingDown, Star, MessageSquare, Eye, Phone, Navigation, MousePointer, CircleAlert as AlertCircle, RefreshCw, Loader as Loader2 } from 'lucide-react';
+import { GoogleConnectionCards } from '@/components/dashboard/google-connection-cards';
+import {
+  Download,
+  TrendingUp,
+  TrendingDown,
+  Star,
+  MessageSquare,
+  Eye,
+  Phone,
+  Navigation,
+  MousePointer,
+  AlertCircle,
+  RefreshCw,
+  Loader2,
+} from 'lucide-react';
 import { format } from 'date-fns';
-import { toast } from 'sonner';
 
 interface DashboardData {
   business: any;
@@ -49,12 +61,7 @@ export default function DashboardPage() {
       hasCheckedSuccessRef.current = true;
       const params = new URLSearchParams(window.location.search);
       if (params.get('success') === 'google_connected') {
-        toast.success('Google account connected successfully!');
         checkGoogleConnection();
-        window.history.replaceState({}, '', '/dashboard');
-      } else if (params.get('error')) {
-        const message = params.get('message') || 'Failed to connect Google account';
-        toast.error(message);
         window.history.replaceState({}, '', '/dashboard');
       }
     }
@@ -172,7 +179,7 @@ export default function DashboardPage() {
   if (showGoogleConnect) {
     return (
       <div className="p-6 flex items-center justify-center min-h-[calc(100vh-4rem)]">
-        <GoogleConnectPrompt onConnectSuccess={checkGoogleConnection} />
+        <GoogleConnectionCards onConnectSuccess={checkGoogleConnection} />
       </div>
     );
   }
@@ -274,7 +281,7 @@ export default function DashboardPage() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
           <p className="text-gray-500 mt-1">
-            Welcome back! Here&apos;s your business performance overview.
+            Welcome back! Here's your business performance overview.
           </p>
         </div>
       </div>
