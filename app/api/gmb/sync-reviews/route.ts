@@ -51,15 +51,23 @@ export async function POST(request: NextRequest) {
       business.business_id
     );
 
+    console.log(`[Sync Reviews] Found ${reviews.length} reviews for business ${businessId}`);
+
     let syncedCount = 0;
 
     for (const review of reviews) {
+      const rating = parseInt(review.starRating.replace('STAR_RATING_', '')) || 5;
+
+      let sentiment: 'positive' | 'neutral' | 'negative' = 'neutral';
+      if (rating >= 4) sentiment = 'positive';
+      else if (rating <= 2) sentiment = 'negative';
+
       const reviewData = {
         business_id: businessId,
         google_review_id: review.reviewId,
         reviewer_name: review.reviewer.displayName,
         reviewer_photo_url: review.reviewer.profilePhotoUrl || null,
-        rating: parseInt(review.starRating.replace('STAR_RATING_', '')) || 5,
+        rating,
         review_text: review.comment || null,
         review_date: new Date(review.createTime).toISOString(),
         reply_text: review.reviewReply?.comment || null,
@@ -67,6 +75,7 @@ export async function POST(request: NextRequest) {
           ? new Date(review.reviewReply.updateTime).toISOString()
           : null,
         reply_status: review.reviewReply ? 'replied' : 'pending',
+        sentiment,
       };
 
       const { data: existingReview } = await supabase

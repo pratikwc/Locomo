@@ -301,12 +301,15 @@ export async function listReviews(
   locationName: string
 ): Promise<GMBReview[]> {
   try {
-    const locationId = locationName.split('/').pop();
-    const data = await fetchWithAuth(
-      `https://mybusiness.googleapis.com/v4/${accountName}/locations/${locationId}/reviews`,
-      accessToken
-    );
+    console.log('[GMB] Fetching reviews for location:', locationName);
+    console.log('[GMB] Account name:', accountName);
 
+    const url = `https://mybusiness.googleapis.com/v4/${locationName}/reviews`;
+    console.log('[GMB] Reviews URL:', url);
+
+    const data = await fetchWithAuth(url, accessToken);
+
+    console.log('[GMB] Reviews response:', JSON.stringify(data, null, 2));
     return data.reviews || [];
   } catch (error) {
     console.error('Error listing reviews:', error);
@@ -422,4 +425,100 @@ export function transformLocationToBusinessData(location: GMBLocation): Business
     longitude: location.latlng?.longitude || null,
     profileCompleteness: calculateProfileCompleteness(location),
   };
+}
+
+interface InsightsMetric {
+  metricType: string;
+  value: number;
+}
+
+interface LocationInsights {
+  date: string;
+  views: number;
+  searches: number;
+  actionsPhone: number;
+  actionsWebsite: number;
+  actionsDirections: number;
+}
+
+export async function getLocationInsights(
+  accessToken: string,
+  locationName: string,
+  startDate: string,
+  endDate: string
+): Promise<LocationInsights[]> {
+  try {
+    const url = `https://mybusiness.googleapis.com/v4/${locationName}/insights:basicMetrics`;
+
+    const body = {
+      locationNames: [locationName],
+      basicRequest: {
+        metricRequests: [
+          { metric: 'QUERIES_DIRECT' },
+          { metric: 'QUERIES_INDIRECT' },
+          { metric: 'VIEWS_MAPS' },
+          { metric: 'VIEWS_SEARCH' },
+          { metric: 'ACTIONS_WEBSITE' },
+          { metric: 'ACTIONS_PHONE' },
+          { metric: 'ACTIONS_DRIVING_DIRECTIONS' },
+        ],
+        timeRange: {
+          startTime: startDate,
+          endTime: endDate,
+        },
+      },
+    };
+
+    const data = await fetchWithAuth(url, accessToken, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+
+    const insights: LocationInsights[] = [];
+
+    if (data.locationMetrics && data.locationMetrics.length > 0) {
+      const locationMetric = data.locationMetrics[0];
+
+      if (locationMetric.metricValues) {
+        const metricsByDate: { [key: string]: any } = {};
+
+        for (const metricValue of locationMetric.metricValues) {
+          const date = metricValue.dimensionalValues?.[0]?.timeDimension?.timeRange?.startTime || '';
+
+          if (!metricsByDate[date]) {
+            metricsByDate[date] = {
+              date,
+              views: 0,
+              searches: 0,
+              actionsPhone: 0,
+              actionsWebsite: 0,
+              actionsDirections: 0,
+            };
+          }
+
+          const metric = metricValue.metric;
+          const value = parseInt(metricValue.totalValue?.value || '0');
+
+          if (metric === 'VIEWS_MAPS' || metric === 'VIEWS_SEARCH') {
+            metricsByDate[date].views += value;
+          } else if (metric === 'QUERIES_DIRECT' || metric === 'QUERIES_INDIRECT') {
+            metricsByDate[date].searches += value;
+          } else if (metric === 'ACTIONS_PHONE') {
+            metricsByDate[date].actionsPhone = value;
+          } else if (metric === 'ACTIONS_WEBSITE') {
+            metricsByDate[date].actionsWebsite = value;
+          } else if (metric === 'ACTIONS_DRIVING_DIRECTIONS') {
+            metricsByDate[date].actionsDirections = value;
+          }
+        }
+
+        insights.push(...Object.values(metricsByDate));
+      }
+    }
+
+    return insights;
+  } catch (error) {
+    console.error('Error fetching location insights:', error);
+    return [];
+  }
 }

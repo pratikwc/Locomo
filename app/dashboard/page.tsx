@@ -10,20 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { LoadingScreen } from '@/components/loading-screen';
 import { GoogleConnectionCards } from '@/components/dashboard/google-connection-cards';
-import {
-  Download,
-  TrendingUp,
-  TrendingDown,
-  Star,
-  MessageSquare,
-  Eye,
-  Phone,
-  Navigation,
-  MousePointer,
-  AlertCircle,
-  RefreshCw,
-  Loader2,
-} from 'lucide-react';
+import { Download, TrendingUp, TrendingDown, Star, MessageSquare, Eye, Phone, Navigation, MousePointer, CircleAlert as AlertCircle, RefreshCw, Loader as Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 
 interface DashboardData {
@@ -33,6 +20,8 @@ interface DashboardData {
   totalReviews: number;
   averageRating: number;
   pendingReviews: number;
+  healthScore: any;
+  lastSynced: string | null;
 }
 
 interface LoadingStep {
@@ -53,8 +42,10 @@ export default function DashboardPage() {
   ]);
   const [loadingProgress, setLoadingProgress] = useState(33);
   const [showGoogleConnect, setShowGoogleConnect] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const hasFetchedRef = useRef(false);
   const hasCheckedSuccessRef = useRef(false);
+  const autoRefreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (!hasCheckedSuccessRef.current) {
@@ -114,6 +105,20 @@ export default function DashboardPage() {
     initializeDashboard();
   }, [hasGoogleAccount, authLoading]);
 
+  useEffect(() => {
+    if (data && !loading) {
+      autoRefreshIntervalRef.current = setInterval(() => {
+        fetchDashboardData();
+      }, 5 * 60 * 1000);
+    }
+
+    return () => {
+      if (autoRefreshIntervalRef.current) {
+        clearInterval(autoRefreshIntervalRef.current);
+      }
+    };
+  }, [data, loading]);
+
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
@@ -143,6 +148,9 @@ export default function DashboardPage() {
           : 0;
         const pendingReviews = reviews.filter((r: any) => r.reply_status === 'pending').length;
 
+        const healthScoreResponse = await fetch(`/api/health-score?businessId=${businessId}`);
+        const healthScoreData = await healthScoreResponse.json();
+
         setData({
           business: businessData,
           reviews: reviews.slice(0, 3),
@@ -150,6 +158,8 @@ export default function DashboardPage() {
           totalReviews,
           averageRating,
           pendingReviews,
+          healthScore: healthScoreData.healthScore || null,
+          lastSynced: businessData.last_synced_at || null,
         });
       }
 
@@ -171,6 +181,29 @@ export default function DashboardPage() {
     if (score >= 60) return 'Good';
     return 'Needs Improvement';
   };
+
+  const handleManualSync = async () => {
+    if (syncing) return;
+
+    setSyncing(true);
+    try {
+      const response = await fetch('/api/sync/all', {
+        method: 'POST',
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        await fetchDashboardData();
+      } else {
+        console.error('Sync failed:', result.error);
+      }
+    } catch (error) {
+      console.error('Error during sync:', error);
+    } finally {
+      setSyncing(false);
+    }
+  };;
 
   if (loading) {
     return <LoadingScreen steps={loadingSteps} progress={loadingProgress} />;
@@ -219,29 +252,39 @@ export default function DashboardPage() {
     );
   }
 
-  const healthScore = Math.round(data.profileCompleteness);
+  const healthScore = data.healthScore?.overall || Math.round(data.profileCompleteness);
+  const profileScore = data.healthScore?.profileScore || data.profileCompleteness;
+  const reviewScore = data.healthScore?.reviewScore || 0;
+  const postScore = data.healthScore?.postScore || 0;
+  const photoScore = data.healthScore?.photoScore || 0;
+  const engagementScore = data.healthScore?.engagementScore || 0;
 
-  const actionItems = [];
-  if (data.pendingReviews > 0) {
-    actionItems.push({
-      title: `Respond to ${data.pendingReviews} pending review${data.pendingReviews > 1 ? 's' : ''}`,
-      description: 'Improve customer engagement',
-      priority: 'high',
-    });
-  }
-  if (data.profileCompleteness < 100) {
-    actionItems.push({
-      title: 'Complete your business profile',
-      description: 'Add missing information to improve visibility',
-      priority: 'medium',
-    });
-  }
+  const actionItems = data.healthScore?.actionItems || [];
   if (actionItems.length === 0) {
-    actionItems.push({
-      title: 'Create weekly post',
-      description: 'Keep your audience engaged',
-      priority: 'low',
-    });
+    if (data.pendingReviews > 0) {
+      actionItems.push({
+        title: `Respond to ${data.pendingReviews} pending review${data.pendingReviews > 1 ? 's' : ''}`,
+        description: 'Improve customer engagement',
+        priority: 'high',
+        impact: 20,
+      });
+    }
+    if (data.profileCompleteness < 100) {
+      actionItems.push({
+        title: 'Complete your business profile',
+        description: 'Add missing information to improve visibility',
+        priority: 'medium',
+        impact: 15,
+      });
+    }
+    if (actionItems.length === 0) {
+      actionItems.push({
+        title: 'Create weekly post',
+        description: 'Keep your audience engaged',
+        priority: 'low',
+        impact: 10,
+      });
+    }
   }
 
   const stats = [
@@ -282,8 +325,30 @@ export default function DashboardPage() {
           <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
           <p className="text-gray-500 mt-1">
             Welcome back! Here's your business performance overview.
+            {data.lastSynced && (
+              <span className="text-xs ml-2">
+                Last synced: {format(new Date(data.lastSynced), 'MMM d, h:mm a')}
+              </span>
+            )}
           </p>
         </div>
+        <Button
+          onClick={handleManualSync}
+          disabled={syncing}
+          variant="outline"
+        >
+          {syncing ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Syncing...
+            </>
+          ) : (
+            <>
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Sync Now
+            </>
+          )}
+        </Button>
       </div>
 
       <Card className="border-2 border-blue-100 bg-gradient-to-br from-blue-50 to-white">
@@ -313,32 +378,48 @@ export default function DashboardPage() {
             </div>
 
             <div className="flex-1">
-              <div className="mb-2 flex items-center justify-between">
-                <span className="text-sm font-medium">Profile Completeness</span>
-                <span className="text-sm font-medium">{data.profileCompleteness}%</span>
-              </div>
-              <SimpleProgress value={data.profileCompleteness} className="mb-4" />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="text-sm font-medium">Profile</span>
+                    <span className="text-sm font-medium">{profileScore}%</span>
+                  </div>
+                  <SimpleProgress value={profileScore} className="mb-3" />
+                </div>
 
-              <div className="mb-2 flex items-center justify-between">
-                <span className="text-sm font-medium">Review Response Rate</span>
-                <span className="text-sm font-medium">
-                  {data.totalReviews > 0
-                    ? Math.round(((data.totalReviews - data.pendingReviews) / data.totalReviews) * 100)
-                    : 0}%
-                </span>
-              </div>
-              <SimpleProgress
-                value={data.totalReviews > 0
-                  ? Math.round(((data.totalReviews - data.pendingReviews) / data.totalReviews) * 100)
-                  : 0}
-                className="mb-4"
-              />
+                <div>
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="text-sm font-medium">Reviews</span>
+                    <span className="text-sm font-medium">{reviewScore}%</span>
+                  </div>
+                  <SimpleProgress value={reviewScore} className="mb-3" />
+                </div>
 
-              <div className="mb-2 flex items-center justify-between">
-                <span className="text-sm font-medium">Average Rating</span>
-                <span className="text-sm font-medium">{data.averageRating > 0 ? data.averageRating.toFixed(1) : 'N/A'} / 5.0</span>
+                <div>
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="text-sm font-medium">Engagement</span>
+                    <span className="text-sm font-medium">{engagementScore}%</span>
+                  </div>
+                  <SimpleProgress value={engagementScore} className="mb-3" />
+                </div>
+
+                <div>
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="text-sm font-medium">Posts</span>
+                    <span className="text-sm font-medium">{postScore}%</span>
+                  </div>
+                  <SimpleProgress value={postScore} className="mb-3" />
+                </div>
               </div>
-              <SimpleProgress value={data.averageRating > 0 ? (data.averageRating / 5) * 100 : 0} />
+
+              <div className="mt-2 p-3 bg-white rounded-lg border">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="font-medium">Overall Health</span>
+                  <span className={`font-bold ${getScoreColor(healthScore)}`}>
+                    {getScoreLabel(healthScore)}
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -348,7 +429,7 @@ export default function DashboardPage() {
               Action Items to Improve Your Score
             </h3>
             <div className="grid gap-3">
-              {actionItems.map((item, index) => (
+              {actionItems.map((item: any, index: number) => (
                 <div
                   key={index}
                   className="flex items-center justify-between p-3 rounded-lg border bg-white"
