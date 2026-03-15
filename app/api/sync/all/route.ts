@@ -148,8 +148,13 @@ export async function POST(request: NextRequest) {
 
       for (const business of businesses) {
         const googleAccount = Array.isArray(business.google_accounts)
-          ? business.google_accounts[0]
-          : business.google_accounts;
+  ? business.google_accounts[0]
+  : business.google_accounts;
+
+if (!googleAccount) {
+  console.log(`[Sync All] No google_account linked for business ${business.id}, skipping`);
+  continue;
+}
 
         const gmbAccountName = googleAccount?.gmb_account_name;
 
