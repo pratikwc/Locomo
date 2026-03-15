@@ -32,33 +32,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     checkAuth();
   }, []);
 
+  const checkGoogleConnection = async () => {
+    try {
+      const response = await fetch('/api/google/check-connection');
+      if (response.ok) {
+        const data = await response.json();
+        setHasGoogleAccount(!!data.connected);
+      } else {
+        setHasGoogleAccount(false);
+      }
+    } catch {
+      setHasGoogleAccount(false);
+    }
+  };
+
   const checkAuth = async () => {
     try {
       const response = await fetch('/api/auth/me');
       if (response.ok) {
         const data = await response.json();
         setUser(data.user);
-        if (data.user) {
-          await checkGoogleConnection();
-        }
+        await checkGoogleConnection();
+      } else {
+        setUser(null);
+        setHasGoogleAccount(false);
       }
-    } catch (err) {
-      console.error('Auth check error:', err);
+    } catch {
+      setUser(null);
+      setHasGoogleAccount(false);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const checkGoogleConnection = async () => {
-    try {
-      const response = await fetch('/api/google/check-connection');
-      if (response.ok) {
-        const data = await response.json();
-        setHasGoogleAccount(data.connected);
-      }
-    } catch (err) {
-      console.error('Google connection check error:', err);
-      setHasGoogleAccount(false);
     }
   };
 
@@ -70,12 +73,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phoneNumber }),
       });
-
       const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to send OTP');
-      }
+      if (!response.ok) throw new Error(data.error || 'Failed to send OTP');
     } catch (err: any) {
       setError(err.message);
       throw err;
@@ -90,14 +89,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phoneNumber, otpCode }),
       });
-
       const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to verify OTP');
-      }
-
+      if (!response.ok) throw new Error(data.error || 'Failed to verify OTP');
       setUser(data.user);
+      await checkGoogleConnection();
     } catch (err: any) {
       setError(err.message);
       throw err;
@@ -108,6 +103,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       await fetch('/api/auth/logout', { method: 'POST' });
       setUser(null);
+      setHasGoogleAccount(false);
     } catch (err) {
       console.error('Logout error:', err);
     }
