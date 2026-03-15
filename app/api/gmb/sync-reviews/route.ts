@@ -93,6 +93,7 @@ export async function POST(request: NextRequest) {
       const reviewData = {
         business_id: businessId,
         google_review_id: review.reviewId,
+        google_review_name: review.name,
         reviewer_name: review.reviewer.displayName,
         reviewer_photo_url: review.reviewer.profilePhotoUrl || null,
         rating,

@@ -323,7 +323,7 @@ export async function replyToReview(
 ): Promise<boolean> {
   try {
     await fetchWithAuth(
-      `https://mybusiness.googleapis.com/v4/${reviewName}/reply`,
+      `https://mybusinessreviews.googleapis.com/v1/${reviewName}/reply`,
       accessToken,
       {
         method: 'PUT',

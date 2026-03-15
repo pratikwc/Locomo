@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin as supabase } from '@/lib/supabase-admin';
 import { getAuthenticatedUserId } from '@/lib/auth-utils';
+import { replyToReview } from '@/lib/gmb-client';
+import { getValidAccessToken } from '@/lib/google-token-manager';
 
 export async function GET(request: NextRequest) {
   try {
@@ -75,7 +77,7 @@ export async function POST(request: NextRequest) {
 
     const { data: review } = await supabase
       .from('reviews')
-      .select('id, business_id')
+      .select('id, business_id, google_review_name')
       .eq('id', reviewId)
       .eq('business_id', businessId)
       .maybeSingle();
@@ -96,6 +98,13 @@ export async function POST(request: NextRequest) {
 
     if (updateError) {
       throw new Error(updateError.message);
+    }
+
+    if (review.google_review_name) {
+      const accessToken = await getValidAccessToken(userId);
+      if (accessToken) {
+        await replyToReview(accessToken, review.google_review_name, replyText);
+      }
     }
 
     return NextResponse.json({ success: true });
