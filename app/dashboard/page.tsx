@@ -110,6 +110,7 @@ export default function DashboardPage() {
   const hasFetchedRef = useRef(false);
   const hasCheckedSuccessRef = useRef(false);
   const autoRefreshRef = useRef<NodeJS.Timeout | null>(null);
+  const [fetchFailed, setFetchFailed] = useState(false);
 
   useEffect(() => {
     if (!hasCheckedSuccessRef.current) {
@@ -149,10 +150,9 @@ export default function DashboardPage() {
       await new Promise(r => setTimeout(r, 200));
       setLoadingSteps(prev => prev.map((s, i) => i === 2 ? { ...s, status: 'loading' } : s));
 
-      if (!hasFetchedRef.current) {
-        hasFetchedRef.current = true;
-        await fetchData();
-      }
+      hasFetchedRef.current = false;
+      hasFetchedRef.current = true;
+      await fetchData();
 
       setLoadingSteps(prev => prev.map((s, i) => i === 2 ? { ...s, status: 'completed' } : s));
       setLoadingProgress(100);
@@ -170,24 +170,32 @@ export default function DashboardPage() {
 
   const fetchData = async () => {
     try {
-      const statusRes = await fetch('/api/gmb/check-status');
+      const statusRes = await fetch('/api/gmb/check-status', { credentials: 'include' });
       const statusData = await statusRes.json();
 
-      if (!statusData.has_gmb_access) {
+      if (!statusRes.ok) {
+        setFetchFailed(true);
+        setLoading(false);
+        return;
+      }
+
+      if (statusData.has_gmb_access === false && statusData.connected === true) {
         setHasGMBAccess(false);
         setLoading(false);
         return;
       }
 
       if (!statusData.businesses?.length) {
+        setHasGMBAccess(true);
         setLoading(false);
         return;
       }
 
+      setHasGMBAccess(true);
       const bid = statusData.businesses[0].id;
       setBusinessId(bid);
 
-      const res = await fetch(`/api/dashboard?businessId=${bid}`);
+      const res = await fetch(`/api/dashboard?businessId=${bid}`, { credentials: 'include' });
       const data = await res.json();
 
       if (res.ok) {
@@ -196,6 +204,7 @@ export default function DashboardPage() {
 
       setLoading(false);
     } catch {
+      setFetchFailed(true);
       setLoading(false);
     }
   };
@@ -225,6 +234,21 @@ export default function DashboardPage() {
     );
   }
 
+  if (fetchFailed) {
+    return (
+      <div className="p-6">
+        <div className="bg-white border border-gray-200 rounded-xl p-12 text-center">
+          <AlertCircle className="h-14 w-14 mx-auto text-red-500 mb-4" />
+          <h2 className="text-2xl font-bold mb-2">Unable to Load Dashboard</h2>
+          <p className="text-gray-500 mb-6">There was a problem connecting to your account. Please try again.</p>
+          <Button onClick={() => { setFetchFailed(false); setLoading(true); hasFetchedRef.current = false; fetchData(); }}>
+            <RefreshCw className="mr-2 h-4 w-4" />Try Again
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   if (!hasGMBAccess) {
     return (
       <div className="p-6">
@@ -242,8 +266,13 @@ export default function DashboardPage() {
     return (
       <div className="p-6">
         <div className="bg-white border border-gray-200 rounded-xl p-12 text-center">
-          <p className="text-gray-500 mb-4">No business data available.</p>
-          <Button onClick={fetchData}><RefreshCw className="mr-2 h-4 w-4" />Refresh</Button>
+          <RefreshCw className="h-14 w-14 mx-auto text-gray-400 mb-4" />
+          <h2 className="text-2xl font-bold mb-2">Syncing Your Business Data</h2>
+          <p className="text-gray-500 mb-6">Your Google Business Profile is connected. Click below to sync your data.</p>
+          <Button onClick={handleSync} disabled={syncing}>
+            {syncing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+            {syncing ? 'Syncing...' : 'Sync Now'}
+          </Button>
         </div>
       </div>
     );
