@@ -67,18 +67,18 @@ async function upsertHealthScore(businessId: string): Promise<void> {
   };
 
   const { data: existing } = await supabaseAdmin
-    .from('health_scores')
-    .select('id')
-    .eq('business_id', businessId)
-    .order('calculated_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  .from('health_scores')
+  .select('id')
+  .eq('business_id', businessId)
+  .order('calculated_at', { ascending: false })
+  .limit(1)
+  .maybeSingle();
 
-  if (existing) {
-    await supabaseAdmin.from('health_scores').update(scoreRow).eq('id', existing.id);
-  } else {
-    await supabaseAdmin.from('health_scores').insert(scoreRow);
-  }
+if (existing) {
+  await supabaseAdmin.from('health_scores').update(scoreRow).eq('id', existing.id);
+} else {
+  await supabaseAdmin.from('health_scores').insert(scoreRow);
+}
 }
 
 export async function POST(request: NextRequest) {
