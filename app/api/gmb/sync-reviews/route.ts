@@ -4,6 +4,21 @@ import { getAuthenticatedUserId } from '@/lib/auth-utils';
 import { listReviews } from '@/lib/gmb-client';
 import { getValidAccessToken } from '@/lib/google-token-manager';
 
+const STAR_RATING_MAP: Record<string, number> = {
+  ONE: 1,
+  TWO: 2,
+  THREE: 3,
+  FOUR: 4,
+  FIVE: 5,
+};
+
+function parseStarRating(starRating: string): number {
+  const upper = starRating.toUpperCase().replace('STAR_RATING_', '');
+  const mapped = STAR_RATING_MAP[upper];
+  if (mapped !== undefined) return mapped;
+  return parseInt(upper) || 3;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const userId = await getAuthenticatedUserId(request);
@@ -45,18 +60,31 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const reviews = await listReviews(
-      accessToken,
-      gmbAccountName,
-      business.business_id
-    );
+    const locationName = business.business_id?.startsWith('locations/')
+      ? business.business_id
+      : `locations/${business.business_id}`;
+
+    let reviews;
+    try {
+      reviews = await listReviews(accessToken, gmbAccountName, locationName);
+    } catch (apiError: any) {
+      console.error('[Sync Reviews] GMB API error:', apiError);
+      const gmbErr = apiError.gmbError;
+      return NextResponse.json(
+        {
+          error: gmbErr?.userMessage || apiError.message || 'Failed to fetch reviews from Google',
+          details: gmbErr?.recoverySteps,
+        },
+        { status: gmbErr?.code === 401 ? 401 : 502 }
+      );
+    }
 
     console.log(`[Sync Reviews] Found ${reviews.length} reviews for business ${businessId}`);
 
     let syncedCount = 0;
 
     for (const review of reviews) {
-      const rating = parseInt(review.starRating.replace('STAR_RATING_', '')) || 5;
+      const rating = parseStarRating(review.starRating);
 
       let sentiment: 'positive' | 'neutral' | 'negative' = 'neutral';
       if (rating >= 4) sentiment = 'positive';

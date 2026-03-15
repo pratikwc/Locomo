@@ -300,21 +300,20 @@ export async function listReviews(
   accountName: string,
   locationName: string
 ): Promise<GMBReview[]> {
-  try {
-    console.log('[GMB] Fetching reviews for location:', locationName);
-    console.log('[GMB] Account name:', accountName);
+  console.log('[GMB] Fetching reviews for location:', locationName);
+  console.log('[GMB] Account name:', accountName);
 
-    const url = `https://mybusiness.googleapis.com/v4/${locationName}/reviews`;
-    console.log('[GMB] Reviews URL:', url);
+  const normalizedLocation = locationName.startsWith('locations/')
+    ? locationName
+    : `locations/${locationName}`;
 
-    const data = await fetchWithAuth(url, accessToken);
+  const url = `https://mybusinessreviews.googleapis.com/v1/${normalizedLocation}/reviews?pageSize=50`;
+  console.log('[GMB] Reviews URL:', url);
 
-    console.log('[GMB] Reviews response:', JSON.stringify(data, null, 2));
-    return data.reviews || [];
-  } catch (error) {
-    console.error('Error listing reviews:', error);
-    return [];
-  }
+  const data = await fetchWithAuth(url, accessToken);
+
+  console.log('[GMB] Reviews response:', JSON.stringify(data, null, 2));
+  return data.reviews || [];
 }
 
 export async function replyToReview(
