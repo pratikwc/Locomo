@@ -58,52 +58,57 @@ export default function DashboardPage() {
     }
   }, [checkGoogleConnection]);
 
-  useEffect(() => {
-    const initializeDashboard = async () => {
-      if (authLoading || hasGoogleAccount === null) {
-        return;
-      }
+useEffect(() => {
+  const initializeDashboard = async () => {
+    if (authLoading) return;
 
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      setLoadingSteps(prev => prev.map((step, i) =>
-        i === 0 ? { ...step, status: 'completed' } : step
-      ));
-      setLoadingProgress(67);
+    // If hasGoogleAccount is still null after auth loaded, treat as false
+    const googleStatus = hasGoogleAccount ?? false;
 
-      await new Promise(resolve => setTimeout(resolve, 500));
-      setLoadingSteps(prev => prev.map((step, i) =>
-        i === 1 ? { ...step, status: 'loading' } : step
-      ));
+    await new Promise(resolve => setTimeout(resolve, 500));
+    setLoadingSteps(prev => prev.map((step, i) =>
+      i === 0 ? { ...step, status: 'completed' } : step
+    ));
+    setLoadingProgress(67);
 
-      if (hasGoogleAccount === false) {
-        setShowGoogleConnect(true);
-        setLoading(false);
-        return;
-      }
+    await new Promise(resolve => setTimeout(resolve, 300));
+    setLoadingSteps(prev => prev.map((step, i) =>
+      i === 1 ? { ...step, status: 'loading' } : step
+    ));
 
+    if (!googleStatus) {
       setLoadingSteps(prev => prev.map((step, i) =>
         i === 1 ? { ...step, status: 'completed' } : step
       ));
-      setLoadingProgress(87);
-
-      await new Promise(resolve => setTimeout(resolve, 500));
-      setLoadingSteps(prev => prev.map((step, i) =>
-        i === 2 ? { ...step, status: 'loading' } : step
-      ));
-
-      if (hasGoogleAccount === true && !hasFetchedRef.current) {
-        hasFetchedRef.current = true;
-        await fetchDashboardData();
-      }
-
-      setLoadingSteps(prev => prev.map((step, i) =>
-        i === 2 ? { ...step, status: 'completed' } : step
-      ));
       setLoadingProgress(100);
-    };
+      setShowGoogleConnect(true);
+      setLoading(false);
+      return;
+    }
 
-    initializeDashboard();
-  }, [hasGoogleAccount, authLoading]);
+    setLoadingSteps(prev => prev.map((step, i) =>
+      i === 1 ? { ...step, status: 'completed' } : step
+    ));
+    setLoadingProgress(87);
+
+    await new Promise(resolve => setTimeout(resolve, 300));
+    setLoadingSteps(prev => prev.map((step, i) =>
+      i === 2 ? { ...step, status: 'loading' } : step
+    ));
+
+    if (!hasFetchedRef.current) {
+      hasFetchedRef.current = true;
+      await fetchDashboardData();
+    }
+
+    setLoadingSteps(prev => prev.map((step, i) =>
+      i === 2 ? { ...step, status: 'completed' } : step
+    ));
+    setLoadingProgress(100);
+  };
+
+  initializeDashboard();
+}, [hasGoogleAccount, authLoading]);
 
   useEffect(() => {
     if (data && !loading) {
