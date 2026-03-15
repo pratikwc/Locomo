@@ -3,49 +3,113 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/auth-context';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { SimpleProgress } from '@/components/simple-progress';
-import { Badge } from '@/components/ui/badge';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { LoadingScreen } from '@/components/loading-screen';
 import { GoogleConnectionCards } from '@/components/dashboard/google-connection-cards';
-import { Download, TrendingUp, TrendingDown, Star, MessageSquare, Eye, Phone, Navigation, MousePointer, CircleAlert as AlertCircle, RefreshCw, Loader as Loader2 } from 'lucide-react';
-import { format } from 'date-fns';
-
-interface DashboardData {
-  business: any;
-  reviews: any[];
-  profileCompleteness: number;
-  totalReviews: number;
-  averageRating: number;
-  pendingReviews: number;
-  healthScore: any;
-  lastSynced: string | null;
-}
+import { StatCard } from '@/components/dashboard/stat-card';
+import { RankingFactorRow } from '@/components/dashboard/ranking-factor-row';
+import { ActionMetricCard } from '@/components/dashboard/action-metric-card';
+import { QuickWinItem } from '@/components/dashboard/quick-win-item';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Phone, Navigation, Globe, CalendarDays, Eye, MousePointerClick, Star, MessageSquare, RefreshCw, Loader as Loader2, CircleAlert as AlertCircle, ChevronDown, Copy, MapPin, Tag, Clock, Code as Code2, Settings } from 'lucide-react';
+import { format, formatDistanceToNowStrict } from 'date-fns';
 
 interface LoadingStep {
   label: string;
   status: 'completed' | 'loading' | 'pending';
 }
 
+interface DashboardPayload {
+  business: any;
+  stats: {
+    napScore: number;
+    profileCompleteness: number;
+    averageRating: number;
+    totalReviews: number;
+    pendingReviews: number;
+    repliedReviews: number;
+    reviewResponseRate: number;
+    daysSinceLastReview: number | null;
+    totalPosts: number;
+    recentReviews: number;
+    clickRate: number;
+    monthlyViews: number;
+    monthlySearches: number;
+    monthlyPhoneCalls: number;
+    monthlyDirections: number;
+    monthlyWebsiteVisits: number;
+    monthlyBookings: number;
+    monthlyActions: number;
+    photoCount: number;
+  };
+  healthScore: any;
+  searchRankingFactors: Array<{
+    name: string;
+    score: number;
+    status: string;
+  }>;
+  recentReviews: any[];
+}
+
+const HOUR_LABELS: Record<string, string> = {
+  MONDAY: 'MON',
+  TUESDAY: 'TUE',
+  WEDNESDAY: 'WED',
+  THURSDAY: 'THU',
+  FRIDAY: 'FRI',
+  SATURDAY: 'SAT',
+  SUNDAY: 'SUN',
+};
+
+function formatTime(t?: string) {
+  if (!t) return '-';
+  const [h, m] = t.split(':').map(Number);
+  const ampm = h >= 12 ? 'pm' : 'am';
+  const hour = h % 12 || 12;
+  return `${hour}:${String(m || 0).padStart(2, '0')} ${ampm}`;
+}
+
+function getScoreLabel(score: number) {
+  if (score >= 80) return { text: 'Excellent', color: 'green' as const };
+  if (score >= 60) return { text: 'Good', color: 'blue' as const };
+  if (score >= 40) return { text: 'Needs Work', color: 'yellow' as const };
+  return { text: 'Poor', color: 'red' as const };
+}
+
+function getRatingFreshnessLabel(days: number | null) {
+  if (days === null) return { text: 'No reviews', color: 'gray' as const, days: '-' };
+  if (days === 0) return { text: 'Fresh', color: 'green' as const, days: 'Today' };
+  if (days <= 14) return { text: 'Fresh', color: 'green' as const, days: `${days} days ago` };
+  if (days <= 30) return { text: 'Aging', color: 'yellow' as const, days: `${days} days ago` };
+  return { text: 'Stale', color: 'red' as const, days: `${days} days ago` };
+}
+
+function getProblemCount(factors: any[]) {
+  return factors.filter(f => f.status === 'danger' || f.status === 'warning').length;
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const { hasGoogleAccount, loading: authLoading, checkGoogleConnection } = useAuth();
-  const [data, setData] = useState<DashboardData | null>(null);
+
+  const [dashData, setDashData] = useState<DashboardPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [hasGMBAccess, setHasGMBAccess] = useState(true);
+  const [showGoogleConnect, setShowGoogleConnect] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [businessId, setBusinessId] = useState<string | null>(null);
+
   const [loadingSteps, setLoadingSteps] = useState<LoadingStep[]>([
     { label: 'Authentication verified', status: 'loading' },
     { label: 'Checking Google connection', status: 'pending' },
-    { label: 'Loading locations', status: 'pending' },
+    { label: 'Loading dashboard data', status: 'pending' },
   ]);
   const [loadingProgress, setLoadingProgress] = useState(33);
-  const [showGoogleConnect, setShowGoogleConnect] = useState(false);
-  const [syncing, setSyncing] = useState(false);
+
   const hasFetchedRef = useRef(false);
   const hasCheckedSuccessRef = useRef(false);
-  const autoRefreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const autoRefreshRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (!hasCheckedSuccessRef.current) {
@@ -58,78 +122,56 @@ export default function DashboardPage() {
     }
   }, [checkGoogleConnection]);
 
-useEffect(() => {
-  const initializeDashboard = async () => {
-    if (authLoading) return;
+  useEffect(() => {
+    const init = async () => {
+      if (authLoading) return;
 
-    // If hasGoogleAccount is still null after auth loaded, treat as false
-    const googleStatus = hasGoogleAccount ?? false;
+      const googleStatus = hasGoogleAccount ?? false;
 
-    await new Promise(resolve => setTimeout(resolve, 500));
-    setLoadingSteps(prev => prev.map((step, i) =>
-      i === 0 ? { ...step, status: 'completed' } : step
-    ));
-    setLoadingProgress(67);
+      await new Promise(r => setTimeout(r, 400));
+      setLoadingSteps(prev => prev.map((s, i) => i === 0 ? { ...s, status: 'completed' } : s));
+      setLoadingProgress(67);
 
-    await new Promise(resolve => setTimeout(resolve, 300));
-    setLoadingSteps(prev => prev.map((step, i) =>
-      i === 1 ? { ...step, status: 'loading' } : step
-    ));
+      await new Promise(r => setTimeout(r, 300));
+      setLoadingSteps(prev => prev.map((s, i) => i === 1 ? { ...s, status: 'loading' } : s));
 
-    if (!googleStatus) {
-      setLoadingSteps(prev => prev.map((step, i) =>
-        i === 1 ? { ...step, status: 'completed' } : step
-      ));
+      if (!googleStatus) {
+        setLoadingSteps(prev => prev.map((s, i) => i === 1 ? { ...s, status: 'completed' } : s));
+        setLoadingProgress(100);
+        setShowGoogleConnect(true);
+        setLoading(false);
+        return;
+      }
+
+      setLoadingSteps(prev => prev.map((s, i) => i === 1 ? { ...s, status: 'completed' } : s));
+      setLoadingProgress(85);
+
+      await new Promise(r => setTimeout(r, 200));
+      setLoadingSteps(prev => prev.map((s, i) => i === 2 ? { ...s, status: 'loading' } : s));
+
+      if (!hasFetchedRef.current) {
+        hasFetchedRef.current = true;
+        await fetchData();
+      }
+
+      setLoadingSteps(prev => prev.map((s, i) => i === 2 ? { ...s, status: 'completed' } : s));
       setLoadingProgress(100);
-      setShowGoogleConnect(true);
-      setLoading(false);
-      return;
-    }
+    };
 
-    setLoadingSteps(prev => prev.map((step, i) =>
-      i === 1 ? { ...step, status: 'completed' } : step
-    ));
-    setLoadingProgress(87);
-
-    await new Promise(resolve => setTimeout(resolve, 300));
-    setLoadingSteps(prev => prev.map((step, i) =>
-      i === 2 ? { ...step, status: 'loading' } : step
-    ));
-
-    if (!hasFetchedRef.current) {
-      hasFetchedRef.current = true;
-      await fetchDashboardData();
-    }
-
-    setLoadingSteps(prev => prev.map((step, i) =>
-      i === 2 ? { ...step, status: 'completed' } : step
-    ));
-    setLoadingProgress(100);
-  };
-
-  initializeDashboard();
-}, [hasGoogleAccount, authLoading]);
+    init();
+  }, [hasGoogleAccount, authLoading]);
 
   useEffect(() => {
-    if (data && !loading) {
-      autoRefreshIntervalRef.current = setInterval(() => {
-        fetchDashboardData();
-      }, 5 * 60 * 1000);
+    if (dashData) {
+      autoRefreshRef.current = setInterval(fetchData, 5 * 60 * 1000);
     }
+    return () => { if (autoRefreshRef.current) clearInterval(autoRefreshRef.current); };
+  }, [dashData]);
 
-    return () => {
-      if (autoRefreshIntervalRef.current) {
-        clearInterval(autoRefreshIntervalRef.current);
-      }
-    };
-  }, [data, loading]);
-
-  const fetchDashboardData = async () => {
+  const fetchData = async () => {
     try {
-      setLoading(true);
-
-      const statusResponse = await fetch('/api/gmb/check-status');
-      const statusData = await statusResponse.json();
+      const statusRes = await fetch('/api/gmb/check-status');
+      const statusData = await statusRes.json();
 
       if (!statusData.has_gmb_access) {
         setHasGMBAccess(false);
@@ -137,78 +179,39 @@ useEffect(() => {
         return;
       }
 
-      if (statusData.businesses && statusData.businesses.length > 0) {
-        const businessId = statusData.businesses[0].id;
+      if (!statusData.businesses?.length) {
+        setLoading(false);
+        return;
+      }
 
-        const businessResponse = await fetch(`/api/businesses/${businessId}`);
-        const businessData = await businessResponse.json();
+      const bid = statusData.businesses[0].id;
+      setBusinessId(bid);
 
-        const reviewsResponse = await fetch(`/api/reviews?businessId=${businessId}`);
-        const reviewsData = await reviewsResponse.json();
+      const res = await fetch(`/api/dashboard?businessId=${bid}`);
+      const data = await res.json();
 
-        const reviews = reviewsData.reviews || [];
-        const totalReviews = reviews.length;
-        const averageRating = totalReviews > 0
-          ? reviews.reduce((sum: number, r: any) => sum + r.rating, 0) / totalReviews
-          : 0;
-        const pendingReviews = reviews.filter((r: any) => r.reply_status === 'pending').length;
-
-        const healthScoreResponse = await fetch(`/api/health-score?businessId=${businessId}`);
-        const healthScoreData = await healthScoreResponse.json();
-
-        setData({
-          business: businessData,
-          reviews: reviews.slice(0, 3),
-          profileCompleteness: businessData.profile_completeness || 0,
-          totalReviews,
-          averageRating,
-          pendingReviews,
-          healthScore: healthScoreData.healthScore || null,
-          lastSynced: businessData.last_synced_at || null,
-        });
+      if (res.ok) {
+        setDashData(data);
       }
 
       setLoading(false);
-    } catch (error) {
-      console.error('Error fetching dashboard data:', error);
+    } catch {
       setLoading(false);
     }
   };
 
-  const getScoreColor = (score: number) => {
-    if (score >= 80) return 'text-green-600';
-    if (score >= 60) return 'text-yellow-600';
-    return 'text-red-600';
-  };
-
-  const getScoreLabel = (score: number) => {
-    if (score >= 80) return 'Excellent';
-    if (score >= 60) return 'Good';
-    return 'Needs Improvement';
-  };
-
-  const handleManualSync = async () => {
+  const handleSync = async () => {
     if (syncing) return;
-
     setSyncing(true);
     try {
-      const response = await fetch('/api/sync/all', {
-        method: 'POST',
-      });
-
-      const result = await response.json();
-
-      if (response.ok) {
-        await fetchDashboardData();
-      } else {
-        console.error('Sync failed:', result.error);
-      }
-    } catch (error) {
-      console.error('Error during sync:', error);
+      await fetch('/api/sync/all', { method: 'POST' });
+      hasFetchedRef.current = false;
+      await fetchData();
+      hasFetchedRef.current = true;
     } finally {
       setSyncing(false);
     }
-  };;
+  };
 
   if (loading) {
     return <LoadingScreen steps={loadingSteps} progress={loadingProgress} />;
@@ -225,368 +228,579 @@ useEffect(() => {
   if (!hasGMBAccess) {
     return (
       <div className="p-6">
-        <Card>
-          <CardContent className="pt-6 text-center py-12">
-            <AlertCircle className="h-16 w-16 mx-auto text-amber-500 mb-4" />
-            <h2 className="text-2xl font-bold mb-2">No Google Business Profile Found</h2>
-            <p className="text-slate-600 mb-6">
-              You need a Google Business Profile to use this platform.
-            </p>
-            <Button onClick={() => router.push('/gmb-onboarding')}>
-              Set Up Google Business Profile
-            </Button>
-          </CardContent>
-        </Card>
+        <div className="bg-white border border-gray-200 rounded-xl p-12 text-center">
+          <AlertCircle className="h-14 w-14 mx-auto text-amber-500 mb-4" />
+          <h2 className="text-2xl font-bold mb-2">No Google Business Profile Found</h2>
+          <p className="text-gray-500 mb-6">You need a Google Business Profile to use this platform.</p>
+          <Button onClick={() => router.push('/gmb-onboarding')}>Set Up Google Business Profile</Button>
+        </div>
       </div>
     );
   }
 
-  if (!data) {
+  if (!dashData) {
     return (
       <div className="p-6">
-        <Card>
-          <CardContent className="pt-6 text-center py-12">
-            <p className="text-slate-500 mb-4">No business data available.</p>
-            <Button onClick={fetchDashboardData}>
-              <RefreshCw className="mr-2 h-4 w-4" />
-              Refresh Data
-            </Button>
-          </CardContent>
-        </Card>
+        <div className="bg-white border border-gray-200 rounded-xl p-12 text-center">
+          <p className="text-gray-500 mb-4">No business data available.</p>
+          <Button onClick={fetchData}><RefreshCw className="mr-2 h-4 w-4" />Refresh</Button>
+        </div>
       </div>
     );
   }
 
-  const healthScore = data.healthScore?.overall || Math.round(data.profileCompleteness);
-  const profileScore = data.healthScore?.profileScore || data.profileCompleteness;
-  const reviewScore = data.healthScore?.reviewScore || 0;
-  const postScore = data.healthScore?.postScore || 0;
-  const photoScore = data.healthScore?.photoScore || 0;
-  const engagementScore = data.healthScore?.engagementScore || 0;
+  const { business, stats, healthScore, searchRankingFactors, recentReviews } = dashData;
+  const actionItems: any[] = healthScore?.action_items || [];
+  const ratingFreshness = getRatingFreshnessLabel(stats.daysSinceLastReview);
+  const overallScoreLabel = getScoreLabel(healthScore?.score ?? stats.profileCompleteness);
+  const problemCount = getProblemCount(searchRankingFactors);
 
-  const actionItems = data.healthScore?.actionItems || [];
-  if (actionItems.length === 0) {
-    if (data.pendingReviews > 0) {
-      actionItems.push({
-        title: `Respond to ${data.pendingReviews} pending review${data.pendingReviews > 1 ? 's' : ''}`,
-        description: 'Improve customer engagement',
-        priority: 'high',
-        impact: 20,
-      });
-    }
-    if (data.profileCompleteness < 100) {
-      actionItems.push({
-        title: 'Complete your business profile',
-        description: 'Add missing information to improve visibility',
-        priority: 'medium',
-        impact: 15,
-      });
-    }
-    if (actionItems.length === 0) {
-      actionItems.push({
-        title: 'Create weekly post',
-        description: 'Keep your audience engaged',
-        priority: 'low',
-        impact: 10,
-      });
+  const businessHours: Record<string, { open: string; close: string }> = {};
+  const periods: any[] = business?.hours?.periods || [];
+  for (const period of periods) {
+    if (period.openDay) {
+      businessHours[period.openDay] = {
+        open: period.openTime?.hours !== undefined
+          ? `${String(period.openTime.hours).padStart(2, '0')}:${String(period.openTime.minutes || 0).padStart(2, '0')}`
+          : period.openTime || '',
+        close: period.closeTime?.hours !== undefined
+          ? `${String(period.closeTime.hours).padStart(2, '0')}:${String(period.closeTime.minutes || 0).padStart(2, '0')}`
+          : period.closeTime || '',
+      };
     }
   }
 
-  const stats = [
-    {
-      title: 'Profile Completeness',
-      value: `${data.profileCompleteness}%`,
-      change: '',
-      trend: 'neutral',
-      icon: Eye,
-    },
-    {
-      title: 'Average Rating',
-      value: data.averageRating > 0 ? data.averageRating.toFixed(1) : 'N/A',
-      change: '',
-      trend: 'neutral',
-      icon: Star,
-    },
-    {
-      title: 'Total Reviews',
-      value: data.totalReviews.toString(),
-      change: '',
-      trend: 'neutral',
-      icon: MessageSquare,
-    },
-    {
-      title: 'Pending Reviews',
-      value: data.pendingReviews.toString(),
-      change: '',
-      trend: 'neutral',
-      icon: Phone,
-    },
-  ];
+  const dayOrder = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
+
+  const address = business?.address;
+  const addressLines = address?.addressLines?.join(', ') || '';
+  const cityLine = [address?.locality, address?.administrativeArea, address?.postalCode]
+    .filter(Boolean).join(', ');
+  const fullAddress = [addressLines, cityLine].filter(Boolean).join(', ');
+
+  const services: string[] = business?.services || [];
+  const category = business?.category || '';
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-          <p className="text-gray-500 mt-1">
-            Welcome back! Here's your business performance overview.
-            {data.lastSynced && (
-              <span className="text-xs ml-2">
-                Last synced: {format(new Date(data.lastSynced), 'MMM d, h:mm a')}
-              </span>
-            )}
-          </p>
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-[1280px] mx-auto px-4 py-6 space-y-5">
+
+        {/* Header */}
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Local SEO Dashboard</h1>
+            <p className="text-sm text-gray-500 mt-0.5">Monitor and optimize your Google Business Profile performance</p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleSync}
+            disabled={syncing}
+            className="flex-shrink-0"
+          >
+            {syncing
+              ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Syncing...</>
+              : <><RefreshCw className="mr-2 h-4 w-4" />Sync Now</>
+            }
+          </Button>
         </div>
-        <Button
-          onClick={handleManualSync}
-          disabled={syncing}
-          variant="outline"
-        >
-          {syncing ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Syncing...
-            </>
-          ) : (
-            <>
-              <RefreshCw className="mr-2 h-4 w-4" />
-              Sync Now
-            </>
+
+        {/* Location selector bar */}
+        <div className="flex items-center gap-3 bg-white border border-gray-200 rounded-xl px-4 py-3">
+          <div className="flex items-center gap-2 flex-1">
+            <MapPin className="h-4 w-4 text-gray-400" />
+            <span className="font-semibold text-gray-900 text-sm">{business?.name || 'Your Business'}</span>
+            <Badge className="bg-green-100 text-green-700 border border-green-200 text-xs font-semibold">
+              Verified
+            </Badge>
+          </div>
+          {business?.last_synced_at && (
+            <span className="text-xs text-gray-400 hidden sm:block">
+              Synced {formatDistanceToNowStrict(new Date(business.last_synced_at), { addSuffix: true })}
+            </span>
           )}
-        </Button>
-      </div>
+          <ChevronDown className="h-4 w-4 text-gray-400" />
+        </div>
 
-      <Card className="border-2 border-blue-100 bg-gradient-to-br from-blue-50 to-white">
-        <CardHeader>
-          <div className="flex items-center justify-between">
+        {/* Top Stats Row */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatCard
+            label="NAP Consistency"
+            value={`${stats.napScore}%`}
+            badge={stats.napScore >= 80
+              ? { text: 'Excellent', color: 'green' }
+              : stats.napScore >= 60
+              ? { text: 'Good', color: 'blue' }
+              : { text: 'Needs Work', color: 'yellow' }}
+            progress={stats.napScore}
+            industryAvg="Industry avg: 78%"
+            hint="Name, Address, and Phone consistency across the web."
+          />
+          <StatCard
+            label="Profile Completeness"
+            value={`${stats.profileCompleteness}%`}
+            badge={stats.profileCompleteness >= 80
+              ? { text: 'Excellent', color: 'green' }
+              : stats.profileCompleteness >= 60
+              ? { text: 'Good', color: 'blue' }
+              : { text: 'Needs Work', color: 'yellow' }}
+            progress={stats.profileCompleteness}
+            industryAvg="Industry avg: 72%"
+            hint="How complete your Google Business Profile is."
+          />
+          <StatCard
+            label="Overall Rating"
+            value={stats.totalReviews > 0 ? stats.averageRating.toFixed(1) : '0.0'}
+            subtitle={`From ${stats.totalReviews} review${stats.totalReviews !== 1 ? 's' : ''}`}
+            badge={
+              stats.totalReviews === 0
+                ? { text: 'No Reviews', color: 'gray' }
+                : stats.averageRating >= 4.5
+                ? { text: 'Excellent', color: 'green' }
+                : stats.averageRating >= 3.5
+                ? { text: 'Good', color: 'blue' }
+                : { text: 'Needs Work', color: 'yellow' }
+            }
+            industryAvg="Industry avg: 4.2 stars"
+            hint="Your average star rating from all Google reviews."
+            footer={
+              <div className="flex gap-0.5">
+                {[1,2,3,4,5].map(s => (
+                  <Star
+                    key={s}
+                    className={`h-3.5 w-3.5 ${s <= Math.round(stats.averageRating) ? 'fill-yellow-400 text-yellow-400' : 'text-gray-200'}`}
+                  />
+                ))}
+              </div>
+            }
+          />
+          <StatCard
+            label="Review Freshness"
+            value={ratingFreshness.days}
+            badge={{ text: ratingFreshness.text, color: ratingFreshness.color }}
+            subtitle={ratingFreshness.days !== '-' ? 'Target: review within 14 days' : 'Get your first review'}
+            hint="How recently you received a new customer review."
+          />
+        </div>
+
+        {/* Search Ranking Factors */}
+        <div className="bg-white border border-gray-200 rounded-xl p-5">
+          <div className="flex items-center gap-2 mb-1">
+            <Settings className="h-4 w-4 text-gray-500" />
+            <h2 className="text-sm font-bold text-gray-900">Search Ranking Factors</h2>
+          </div>
+          <p className="text-xs text-gray-500 mb-3">How Google determines your local search position</p>
+
+          {problemCount > 0 && (
+            <div className="mb-4 px-3 py-2.5 bg-yellow-50 border border-yellow-200 rounded-lg text-xs text-yellow-800 font-medium">
+              {problemCount} factor{problemCount > 1 ? 's' : ''} need{problemCount === 1 ? 's' : ''} attention.{' '}
+              <span className="text-yellow-700">Improving these can boost your local search ranking.</span>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 divide-y md:divide-y-0 md:divide-x divide-gray-100">
             <div>
-              <CardTitle className="text-2xl">Google Health Score</CardTitle>
-              <CardDescription className="mt-1">
-                Overall profile health and optimization status
-              </CardDescription>
+              {searchRankingFactors.slice(0, Math.ceil(searchRankingFactors.length / 2)).map(f => (
+                <RankingFactorRow
+                  key={f.name}
+                  name={f.name}
+                  score={f.score}
+                  status={f.status as any}
+                />
+              ))}
             </div>
-            <Button variant="outline" size="sm">
-              <Download className="mr-2 h-4 w-4" />
-              Download Report
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="flex items-center gap-6">
-            <div className="relative">
-              <div className="w-32 h-32 rounded-full border-8 border-gray-200 flex items-center justify-center">
-                <div className={`text-4xl font-bold ${getScoreColor(healthScore)}`}>
-                  {healthScore}
-                </div>
-              </div>
-              <div className="absolute inset-0 rounded-full border-8 border-transparent border-t-blue-600 animate-spin-slow"></div>
-            </div>
-
-            <div className="flex-1">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <div className="mb-2 flex items-center justify-between">
-                    <span className="text-sm font-medium">Profile</span>
-                    <span className="text-sm font-medium">{profileScore}%</span>
-                  </div>
-                  <SimpleProgress value={profileScore} className="mb-3" />
-                </div>
-
-                <div>
-                  <div className="mb-2 flex items-center justify-between">
-                    <span className="text-sm font-medium">Reviews</span>
-                    <span className="text-sm font-medium">{reviewScore}%</span>
-                  </div>
-                  <SimpleProgress value={reviewScore} className="mb-3" />
-                </div>
-
-                <div>
-                  <div className="mb-2 flex items-center justify-between">
-                    <span className="text-sm font-medium">Engagement</span>
-                    <span className="text-sm font-medium">{engagementScore}%</span>
-                  </div>
-                  <SimpleProgress value={engagementScore} className="mb-3" />
-                </div>
-
-                <div>
-                  <div className="mb-2 flex items-center justify-between">
-                    <span className="text-sm font-medium">Posts</span>
-                    <span className="text-sm font-medium">{postScore}%</span>
-                  </div>
-                  <SimpleProgress value={postScore} className="mb-3" />
-                </div>
-              </div>
-
-              <div className="mt-2 p-3 bg-white rounded-lg border">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="font-medium">Overall Health</span>
-                  <span className={`font-bold ${getScoreColor(healthScore)}`}>
-                    {getScoreLabel(healthScore)}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="pt-4 border-t">
-            <h3 className="font-semibold mb-3 flex items-center">
-              <AlertCircle className="mr-2 h-5 w-5 text-blue-600" />
-              Action Items to Improve Your Score
-            </h3>
-            <div className="grid gap-3">
-              {actionItems.map((item: any, index: number) => (
-                <div
-                  key={index}
-                  className="flex items-center justify-between p-3 rounded-lg border bg-white"
-                >
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="font-medium text-sm">{item.title}</p>
-                      <Badge
-                        variant={
-                          item.priority === 'high'
-                            ? 'destructive'
-                            : item.priority === 'medium'
-                            ? 'default'
-                            : 'secondary'
-                        }
-                        className="text-xs"
-                      >
-                        {item.priority}
-                      </Badge>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-1">{item.description}</p>
-                  </div>
-                  <Button size="sm" variant="ghost">
-                    Take Action
-                  </Button>
-                </div>
+            <div className="md:pl-8">
+              {searchRankingFactors.slice(Math.ceil(searchRankingFactors.length / 2)).map(f => (
+                <RankingFactorRow
+                  key={f.name}
+                  name={f.name}
+                  score={f.score}
+                  status={f.status as any}
+                />
               ))}
             </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-        {stats.map((stat, index) => {
-          const Icon = stat.icon;
-          const TrendIcon = stat.trend === 'up' ? TrendingUp : TrendingDown;
+        {/* Customer Actions */}
+        <div className="bg-white border border-gray-200 rounded-xl p-5">
+          <div className="flex items-center gap-2 mb-1">
+            <MousePointerClick className="h-4 w-4 text-gray-500" />
+            <h2 className="text-sm font-bold text-gray-900">Customer Actions</h2>
+          </div>
+          <p className="text-xs text-gray-500 mb-4">How people interact with your listing (last 30 days)</p>
 
-          return (
-            <Card key={index}>
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium text-gray-600">
-                  {stat.title}
-                </CardTitle>
-                <Icon className="h-4 w-4 text-gray-400" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold">{stat.value}</div>
-                <div className="flex items-center text-xs mt-1">
-                  <TrendIcon
-                    className={`mr-1 h-3 w-3 ${
-                      stat.trend === 'up' ? 'text-green-600' : 'text-red-600'
-                    }`}
-                  />
-                  <span
-                    className={
-                      stat.trend === 'up' ? 'text-green-600' : 'text-red-600'
-                    }
-                  >
-                    {stat.change}
-                  </span>
-                  <span className="text-gray-500 ml-1">vs last month</span>
+          <div className="mb-3">
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">High-Intent Actions</p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <ActionMetricCard
+                icon={<Phone className="h-4 w-4" />}
+                label="Phone Calls"
+                value={stats.monthlyPhoneCalls}
+                hint="Total phone call actions in the last 30 days."
+              />
+              <ActionMetricCard
+                icon={<Navigation className="h-4 w-4" />}
+                label="Directions"
+                value={stats.monthlyDirections}
+                hint="Total direction requests in the last 30 days."
+              />
+              <ActionMetricCard
+                icon={<Globe className="h-4 w-4" />}
+                label="Website Visits"
+                value={stats.monthlyWebsiteVisits}
+                hint="Total website clicks from your listing."
+              />
+              <ActionMetricCard
+                icon={<CalendarDays className="h-4 w-4" />}
+                label="Bookings"
+                value={stats.monthlyBookings}
+                hint="Total booking actions from your listing."
+              />
+            </div>
+          </div>
+
+          <div className="mt-4">
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Visibility & Reviews</p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <ActionMetricCard
+                icon={<Eye className="h-4 w-4" />}
+                label="Profile Views"
+                value={stats.monthlyViews}
+                hint="Total profile impressions in the last 30 days."
+              />
+              <ActionMetricCard
+                icon={<MousePointerClick className="h-4 w-4" />}
+                label="Click Rate"
+                value={`${stats.clickRate.toFixed(2)}%`}
+                badge={stats.clickRate < 1 ? 'Low' : undefined}
+                hint="Percentage of views that resulted in an action."
+              />
+              <ActionMetricCard
+                icon={<Star className="h-4 w-4" />}
+                label="New Reviews"
+                value={stats.recentReviews}
+                hint="New reviews received this month."
+              />
+              <ActionMetricCard
+                icon={<MessageSquare className="h-4 w-4" />}
+                label="Response Rate"
+                value={`${Math.round(stats.reviewResponseRate * 100)}%`}
+                badge={stats.reviewResponseRate < 0.5 ? 'Low' : undefined}
+                hint="Percentage of reviews you have responded to."
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Bottom 3-column section */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+          {/* Business Information */}
+          <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
+            <div>
+              <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                <MapPin className="h-4 w-4 text-gray-500" />
+                Business Information
+              </h2>
+              <p className="text-xs text-gray-400 mt-0.5">Core details about your business</p>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                  <Globe className="h-3 w-3" /> Business Name
+                </p>
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-gray-800 font-medium">{business?.name || '-'}</p>
+                  <button className="text-gray-300 hover:text-gray-500 transition-colors">
+                    <Copy className="h-3.5 w-3.5" />
+                  </button>
                 </div>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
+              </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent Reviews</CardTitle>
-            <CardDescription>Latest customer feedback</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {data.reviews.length > 0 ? (
-              <>
-                <div className="space-y-4">
-                  {data.reviews.map((review: any) => (
-                    <div key={review.id} className="flex gap-3 pb-4 border-b last:border-0">
-                      <Avatar className="w-10 h-10 flex-shrink-0">
-                        <AvatarImage src={review.reviewer_photo_url || ''} />
-                        <AvatarFallback>
-                          {review.reviewer_name?.charAt(0) || 'U'}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between">
-                          <p className="font-medium text-sm">{review.reviewer_name}</p>
-                          <div className="flex">
-                            {[1, 2, 3, 4, 5].map((star) => (
-                              <Star
-                                key={star}
-                                className={`h-3 w-3 ${
-                                  star <= review.rating
-                                    ? 'fill-yellow-400 text-yellow-400'
-                                    : 'text-gray-300'
-                                }`}
-                              />
-                            ))}
-                          </div>
-                        </div>
-                        <p className="text-sm text-gray-600 mt-1 line-clamp-2">
-                          {review.review_text || 'No comment provided'}
-                        </p>
-                        <p className="text-xs text-gray-400 mt-1">
-                          {format(new Date(review.review_date), 'MMM d, yyyy')}
-                        </p>
+              <div>
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                  <Tag className="h-3 w-3" /> Category
+                </p>
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-gray-800">{category || '-'}</p>
+                  <button className="text-gray-300 hover:text-gray-500 transition-colors">
+                    <Tag className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              {services.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Services</p>
+                  <p className="text-xs text-gray-600 leading-relaxed line-clamp-4">
+                    {services.join(', ')}
+                  </p>
+                  <button className="text-xs text-blue-500 mt-1 hover:underline">Refresh Services</button>
+                </div>
+              )}
+
+              {business?.description && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Description</p>
+                  <p className="text-xs text-gray-600 leading-relaxed line-clamp-4">{business.description}</p>
+                </div>
+              )}
+
+              <div className="pt-2 border-t border-gray-100">
+                <p className="text-sm font-semibold text-gray-800 flex items-center gap-1.5 mb-2">
+                  <MapPin className="h-3.5 w-3.5 text-gray-400" />
+                  Contact Information
+                </p>
+
+                {fullAddress && (
+                  <div className="mb-2">
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-0.5">Address</p>
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-xs text-gray-700">{fullAddress}</p>
+                      <button className="text-gray-300 hover:text-gray-500 flex-shrink-0">
+                        <Copy className="h-3 w-3" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {business?.phone && (
+                  <div className="mb-2">
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-0.5">Phone</p>
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs text-gray-700">{business.phone}</p>
+                      <div className="flex gap-1">
+                        <button className="text-gray-300 hover:text-gray-500"><Copy className="h-3 w-3" /></button>
+                        <button className="text-gray-300 hover:text-gray-500"><Phone className="h-3 w-3" /></button>
                       </div>
                     </div>
-                  ))}
-                </div>
-                <Button
-                  variant="outline"
-                  className="w-full mt-4"
-                  onClick={() => router.push('/dashboard/reviews')}
-                >
-                  View All Reviews
-                </Button>
-              </>
-            ) : (
-              <div className="text-center py-8 text-slate-500">
-                No reviews yet
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                  </div>
+                )}
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Quick Actions</CardTitle>
-            <CardDescription>Manage your business profile</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <Button className="w-full justify-start" variant="outline">
-              <MessageSquare className="mr-2 h-4 w-4" />
-              Create New Post
-            </Button>
-            <Button className="w-full justify-start" variant="outline">
-              <Star className="mr-2 h-4 w-4" />
-              Respond to Reviews
-            </Button>
-            <Button className="w-full justify-start" variant="outline">
-              <TrendingUp className="mr-2 h-4 w-4" />
-              Generate Keywords
-            </Button>
-            <Button className="w-full justify-start" variant="outline">
-              <Eye className="mr-2 h-4 w-4" />
-              View Analytics
-            </Button>
-          </CardContent>
-        </Card>
+                {business?.website && (
+                  <div>
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-0.5">Website</p>
+                    <p className="text-xs text-blue-500 truncate">{business.website}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Performance Metrics */}
+          <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
+            <div>
+              <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                <Star className="h-4 w-4 text-gray-500" />
+                Performance Metrics
+              </h2>
+              <p className="text-xs text-gray-400 mt-0.5">Key statistics for this location</p>
+            </div>
+
+            <div className="space-y-3">
+              <div className="p-3 bg-gray-50 rounded-lg">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-1 mb-1">
+                  <Star className="h-3 w-3" /> Rating
+                </p>
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl font-bold text-gray-900">
+                    {stats.averageRating > 0 ? stats.averageRating.toFixed(1) : '0.0'}
+                  </span>
+                  <div>
+                    <div className="flex gap-0.5">
+                      {[1,2,3,4,5].map(s => (
+                        <Star
+                          key={s}
+                          className={`h-3 w-3 ${s <= Math.round(stats.averageRating) ? 'fill-yellow-400 text-yellow-400' : 'text-gray-200'}`}
+                        />
+                      ))}
+                    </div>
+                    <p className="text-xs text-gray-400">({stats.totalReviews} reviews)</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-3 bg-gray-50 rounded-lg">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-1 mb-1">
+                  <MessageSquare className="h-3 w-3" /> Posts (All-Time)
+                </p>
+                <span className="text-2xl font-bold text-gray-900">{stats.totalPosts}</span>
+              </div>
+
+              <div className="p-3 bg-gray-50 rounded-lg">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Overall Health Score</p>
+                <div className="flex items-center gap-3">
+                  <span className="text-3xl font-bold text-gray-900">{healthScore?.score ?? stats.profileCompleteness}</span>
+                  <div className="flex-1">
+                    <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full ${
+                          (healthScore?.score ?? stats.profileCompleteness) >= 80
+                            ? 'bg-green-500'
+                            : (healthScore?.score ?? stats.profileCompleteness) >= 60
+                            ? 'bg-blue-500'
+                            : 'bg-yellow-500'
+                        }`}
+                        style={{ width: `${healthScore?.score ?? stats.profileCompleteness}%` }}
+                      />
+                    </div>
+                    <span className={`text-xs font-semibold mt-0.5 inline-block ${
+                      overallScoreLabel.color === 'green' ? 'text-green-600' :
+                      overallScoreLabel.color === 'blue' ? 'text-blue-600' :
+                      overallScoreLabel.color === 'yellow' ? 'text-yellow-600' : 'text-red-600'
+                    }`}>{overallScoreLabel.text}</span>
+                  </div>
+                </div>
+              </div>
+
+              {healthScore && (
+                <div className="space-y-1.5 pt-1">
+                  {[
+                    { label: 'Profile', key: 'profile_score' },
+                    { label: 'Reviews', key: 'review_score' },
+                    { label: 'Posts', key: 'post_score' },
+                    { label: 'Engagement', key: 'engagement_score' },
+                  ].map(({ label, key }) => {
+                    const val = healthScore[key] ?? 0;
+                    return (
+                      <div key={key} className="flex items-center gap-2">
+                        <span className="text-xs text-gray-500 w-20 flex-shrink-0">{label}</span>
+                        <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full ${val >= 70 ? 'bg-green-400' : val >= 40 ? 'bg-yellow-400' : 'bg-red-400'}`}
+                            style={{ width: `${val}%` }}
+                          />
+                        </div>
+                        <span className="text-xs font-medium text-gray-600 w-8 text-right">{val}%</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {recentReviews.length > 0 && (
+                <div className="pt-2 border-t border-gray-100">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Recent Reviews</p>
+                  <div className="space-y-2">
+                    {recentReviews.slice(0, 3).map((r: any) => (
+                      <div key={r.id} className="flex items-start gap-2">
+                        <Avatar className="w-6 h-6 flex-shrink-0">
+                          <AvatarImage src={r.reviewer_photo_url || ''} />
+                          <AvatarFallback className="text-xs">{r.reviewer_name?.charAt(0) || 'U'}</AvatarFallback>
+                        </Avatar>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-medium text-gray-700 truncate">{r.reviewer_name}</span>
+                            <div className="flex gap-0.5 flex-shrink-0">
+                              {[1,2,3,4,5].map(s => (
+                                <Star key={s} className={`h-2.5 w-2.5 ${s <= r.rating ? 'fill-yellow-400 text-yellow-400' : 'text-gray-200'}`} />
+                              ))}
+                            </div>
+                          </div>
+                          {r.review_text && (
+                            <p className="text-xs text-gray-500 line-clamp-1">{r.review_text}</p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full mt-2 text-xs text-blue-600 hover:text-blue-700"
+                    onClick={() => router.push('/dashboard/reviews')}
+                  >
+                    View All Reviews
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Business Details + Quick Wins */}
+          <div className="space-y-4">
+            {/* Business Details */}
+            <div className="bg-white border border-gray-200 rounded-xl p-5">
+              <div className="mb-3">
+                <h2 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-gray-500" />
+                  Business Details
+                </h2>
+                <p className="text-xs text-gray-400 mt-0.5">Hours, labels, and other settings</p>
+              </div>
+
+              {Object.keys(businessHours).length > 0 ? (
+                <div>
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1">
+                    <Clock className="h-3 w-3" /> Business Hours
+                  </p>
+                  <div className="space-y-1">
+                    {dayOrder.map(day => {
+                      const h = businessHours[day];
+                      if (!h) return null;
+                      return (
+                        <div key={day} className="flex items-center justify-between text-xs">
+                          <span className="text-gray-500 font-medium w-10">{HOUR_LABELS[day]}</span>
+                          <span className="text-gray-700">
+                            {formatTime(h.open)} - {formatTime(h.close)}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-gray-400 italic">No business hours set</p>
+              )}
+
+              <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between">
+                <span className="text-xs text-gray-400 flex items-center gap-1">
+                  <Code2 className="h-3 w-3" /> Developer: Raw Data
+                </span>
+                <ChevronDown className="h-3.5 w-3.5 text-gray-400" />
+              </div>
+            </div>
+
+            {/* Quick Wins */}
+            <div className="bg-white border border-gray-200 rounded-xl p-5">
+              <div className="flex items-center gap-2 mb-1">
+                <div className="h-5 w-5 rounded-full border-2 border-green-500 flex items-center justify-center">
+                  <div className="h-2 w-2 rounded-full bg-green-500" />
+                </div>
+                <h2 className="text-sm font-bold text-gray-900">Quick Wins</h2>
+              </div>
+              <p className="text-xs text-gray-500 mb-3">
+                {actionItems.length} improvement{actionItems.length !== 1 ? 's' : ''} to boost visibility
+              </p>
+
+              <div className="space-y-2">
+                {actionItems.length === 0 ? (
+                  <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-100 rounded-lg">
+                    <Star className="h-4 w-4 text-green-500" />
+                    <p className="text-sm text-green-700 font-medium">Great job! No urgent improvements needed.</p>
+                  </div>
+                ) : (
+                  actionItems.slice(0, 4).map((item: any, i: number) => (
+                    <QuickWinItem
+                      key={i}
+                      title={item.title}
+                      description={item.description}
+                      priority={item.priority}
+                      action={item.type === 'profile' ? 'Fix' : item.type === 'reviews' ? 'Act' : undefined}
+                      onAction={() => {
+                        if (item.type === 'profile') router.push('/dashboard/profile');
+                        else if (item.type === 'reviews') router.push('/dashboard/reviews');
+                        else if (item.type === 'posts') router.push('/dashboard/posts');
+                      }}
+                    />
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
