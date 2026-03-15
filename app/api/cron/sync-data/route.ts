@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { supabaseAdmin as supabase } from '@/lib/supabase-admin';
 import { listReviews, listBusinessLocations, getBusinessInfo, getLocationInsights } from '@/lib/gmb-client';
 import { getValidAccessToken } from '@/lib/google-token-manager';
 import { calculateHealthScore } from '@/lib/health-score-calculator';

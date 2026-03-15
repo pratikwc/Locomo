@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { supabaseAdmin } from './supabase-admin';
 import { refreshAccessToken } from './google-client';
 
 export interface GoogleTokens {
@@ -9,7 +9,7 @@ export interface GoogleTokens {
 
 export async function getValidAccessToken(userId: string): Promise<string | null> {
   try {
-    const { data: googleAccounts, error } = await supabase
+    const { data: googleAccounts, error } = await supabaseAdmin
       .from('google_accounts')
       .select('access_token, refresh_token, token_expires_at')
       .eq('user_id', userId)
@@ -42,7 +42,7 @@ export async function getValidAccessToken(userId: string): Promise<string | null
 
       const newExpiresAt = new Date(Date.now() + (tokenData.expires_in || 3600) * 1000);
 
-      const { error: updateError } = await supabase
+      const { error: updateError } = await supabaseAdmin
         .from('google_accounts')
         .update({
           access_token: tokenData.access_token,
@@ -76,7 +76,7 @@ export async function isTokenExpired(expiresAt: string): Promise<boolean> {
 
 export async function disconnectGoogleAccount(userId: string): Promise<boolean> {
   try {
-    const { error } = await supabase
+    const { error } = await supabaseAdmin
       .from('google_accounts')
       .delete()
       .eq('user_id', userId);

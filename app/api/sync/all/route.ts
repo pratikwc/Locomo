@@ -1,11 +1,85 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { supabaseAdmin } from '@/lib/supabase-admin';
 import { getAuthenticatedUserId } from '@/lib/auth-utils';
 import { listReviews } from '@/lib/gmb-client';
 import { getValidAccessToken } from '@/lib/google-token-manager';
 import { calculateHealthScore } from '@/lib/health-score-calculator';
 
 const MANUAL_SYNC_COOLDOWN_MINUTES = 5;
+
+async function upsertHealthScore(businessId: string): Promise<void> {
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+  const [reviewsResult, postsResult, analyticsResult, businessResult] = await Promise.all([
+    supabaseAdmin.from('reviews').select('rating, reply_text').eq('business_id', businessId),
+    supabaseAdmin.from('posts').select('created_at').eq('business_id', businessId).eq('status', 'published'),
+    supabaseAdmin.from('analytics')
+      .select('views, actions_phone, actions_website, actions_directions')
+      .eq('business_id', businessId)
+      .gte('date', thirtyDaysAgo.toISOString().split('T')[0]),
+    supabaseAdmin.from('businesses').select('profile_completeness, photos').eq('id', businessId).maybeSingle(),
+  ]);
+
+  const businessData = businessResult.data;
+  if (!businessData) return;
+
+  const reviews = reviewsResult.data || [];
+  const posts = postsResult.data || [];
+  const analytics = analyticsResult.data || [];
+
+  const totalReviews = reviews.length;
+  const averageRating = totalReviews > 0
+    ? reviews.reduce((sum, r) => sum + r.rating, 0) / totalReviews
+    : 0;
+  const reviewsWithReplies = reviews.filter(r => r.reply_text).length;
+  const reviewResponseRate = totalReviews > 0 ? reviewsWithReplies / totalReviews : 0;
+  const recentPosts = posts.filter(p => new Date(p.created_at) >= thirtyDaysAgo);
+  const monthlyViews = analytics.reduce((sum, a) => sum + (a.views || 0), 0);
+  const monthlyActions = analytics.reduce((sum, a) =>
+    sum + (a.actions_phone || 0) + (a.actions_website || 0) + (a.actions_directions || 0), 0
+  );
+  const photoCount = Array.isArray(businessData.photos) ? businessData.photos.length : 0;
+
+  const healthScore = calculateHealthScore({
+    profileCompleteness: businessData.profile_completeness || 0,
+    totalReviews,
+    averageRating,
+    reviewResponseRate,
+    totalPosts: posts.length,
+    recentPostsCount: recentPosts.length,
+    photoCount,
+    recentPhotosCount: 0,
+    monthlyViews,
+    monthlyActions,
+  });
+
+  const scoreRow = {
+    business_id: businessId,
+    score: healthScore.overall,
+    profile_score: healthScore.profileScore,
+    review_score: healthScore.reviewScore,
+    post_score: healthScore.postScore,
+    photo_score: healthScore.photoScore,
+    engagement_score: healthScore.engagementScore,
+    action_items: healthScore.actionItems,
+    calculated_at: new Date().toISOString(),
+  };
+
+  const { data: existing } = await supabaseAdmin
+    .from('health_scores')
+    .select('id')
+    .eq('business_id', businessId)
+    .order('calculated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (existing) {
+    await supabaseAdmin.from('health_scores').update(scoreRow).eq('id', existing.id);
+  } else {
+    await supabaseAdmin.from('health_scores').insert(scoreRow);
+  }
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -17,7 +91,7 @@ export async function POST(request: NextRequest) {
 
     const cooldownTime = new Date(Date.now() - MANUAL_SYNC_COOLDOWN_MINUTES * 60 * 1000);
 
-    const { data: recentSync } = await supabase
+    const { data: recentSync } = await supabaseAdmin
       .from('gmb_sync_sessions')
       .select('completed_at, status')
       .eq('user_id', userId)
@@ -34,7 +108,7 @@ export async function POST(request: NextRequest) {
     }
 
     const syncSessionId = crypto.randomUUID();
-    await supabase.from('gmb_sync_sessions').insert({
+    await supabaseAdmin.from('gmb_sync_sessions').insert({
       id: syncSessionId,
       user_id: userId,
       status: 'running',
@@ -42,13 +116,13 @@ export async function POST(request: NextRequest) {
     });
 
     try {
-      const { data: businesses } = await supabase
+      const { data: businesses } = await supabaseAdmin
         .from('businesses')
-        .select('id, business_id, google_accounts!inner(*)')
+        .select('id, business_id, google_accounts!inner(gmb_account_name)')
         .eq('user_id', userId);
 
       if (!businesses || businesses.length === 0) {
-        await supabase
+        await supabaseAdmin
           .from('gmb_sync_sessions')
           .update({
             status: 'completed',
@@ -77,142 +151,68 @@ export async function POST(request: NextRequest) {
           ? business.google_accounts[0]
           : business.google_accounts;
 
-        if (!googleAccount) {
-          continue;
-        }
-
-        const gmbAccountName = googleAccount.gmb_account_name;
+        const gmbAccountName = googleAccount?.gmb_account_name;
 
         if (!gmbAccountName) {
-          continue;
+          console.log(`[Sync All] No gmb_account_name for business ${business.id}, skipping reviews`);
         }
-
-        const reviews = await listReviews(
-          accessToken,
-          gmbAccountName,
-          business.business_id
-        );
 
         let businessSynced = 0;
 
-        for (const review of reviews) {
-          const rating = parseInt(review.starRating.replace('STAR_RATING_', '')) || 5;
+        if (gmbAccountName) {
+          const reviews = await listReviews(
+            accessToken,
+            gmbAccountName,
+            business.business_id
+          );
 
-          let sentiment: 'positive' | 'neutral' | 'negative' = 'neutral';
-          if (rating >= 4) sentiment = 'positive';
-          else if (rating <= 2) sentiment = 'negative';
+          console.log(`[Sync All] Fetched ${reviews.length} reviews for business ${business.id}`);
 
-          const reviewData = {
-            business_id: business.id,
-            google_review_id: review.reviewId,
-            reviewer_name: review.reviewer.displayName,
-            reviewer_photo_url: review.reviewer.profilePhotoUrl || null,
-            rating,
-            review_text: review.comment || null,
-            review_date: new Date(review.createTime).toISOString(),
-            reply_text: review.reviewReply?.comment || null,
-            reply_date: review.reviewReply?.updateTime
-              ? new Date(review.reviewReply.updateTime).toISOString()
-              : null,
-            reply_status: review.reviewReply ? 'replied' : 'pending',
-            sentiment,
-          };
+          for (const review of reviews) {
+            const rating = parseInt(review.starRating.replace('STAR_RATING_', '')) || 5;
 
-          const { data: existingReview } = await supabase
-            .from('reviews')
-            .select('id')
-            .eq('google_review_id', reviewData.google_review_id)
-            .maybeSingle();
+            let sentiment: 'positive' | 'neutral' | 'negative' = 'neutral';
+            if (rating >= 4) sentiment = 'positive';
+            else if (rating <= 2) sentiment = 'negative';
 
-          if (existingReview) {
-            await supabase
+            const reviewData = {
+              business_id: business.id,
+              google_review_id: review.reviewId,
+              reviewer_name: review.reviewer.displayName,
+              reviewer_photo_url: review.reviewer.profilePhotoUrl || null,
+              rating,
+              review_text: review.comment || null,
+              review_date: new Date(review.createTime).toISOString(),
+              reply_text: review.reviewReply?.comment || null,
+              reply_date: review.reviewReply?.updateTime
+                ? new Date(review.reviewReply.updateTime).toISOString()
+                : null,
+              reply_status: review.reviewReply ? 'replied' : 'pending',
+              sentiment,
+            };
+
+            const { data: existingReview } = await supabaseAdmin
               .from('reviews')
-              .update({
-                ...reviewData,
-                updated_at: new Date().toISOString(),
-              })
-              .eq('id', existingReview.id);
-          } else {
-            await supabase.from('reviews').insert(reviewData);
+              .select('id')
+              .eq('google_review_id', reviewData.google_review_id)
+              .maybeSingle();
+
+            if (existingReview) {
+              await supabaseAdmin
+                .from('reviews')
+                .update({ ...reviewData, updated_at: new Date().toISOString() })
+                .eq('id', existingReview.id);
+            } else {
+              await supabaseAdmin.from('reviews').insert(reviewData);
+            }
+
+            businessSynced++;
           }
-
-          businessSynced++;
         }
 
-        const thirtyDaysAgo = new Date();
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        await upsertHealthScore(business.id);
 
-        const { data: allReviews } = await supabase
-          .from('reviews')
-          .select('rating, reply_text')
-          .eq('business_id', business.id);
-
-        const { data: posts } = await supabase
-          .from('posts')
-          .select('created_at, status')
-          .eq('business_id', business.id)
-          .eq('status', 'published');
-
-        const { data: analytics } = await supabase
-          .from('analytics')
-          .select('views, actions_phone, actions_website, actions_directions')
-          .eq('business_id', business.id)
-          .gte('date', thirtyDaysAgo.toISOString());
-
-        const { data: businessData } = await supabase
-          .from('businesses')
-          .select('profile_completeness, photos')
-          .eq('id', business.id)
-          .maybeSingle();
-
-        if (businessData) {
-          const totalReviews = allReviews?.length || 0;
-          const averageRating = totalReviews > 0
-            ? allReviews!.reduce((sum, r) => sum + r.rating, 0) / totalReviews
-            : 0;
-          const reviewsWithReplies = allReviews?.filter(r => r.reply_text)?.length || 0;
-          const reviewResponseRate = totalReviews > 0 ? reviewsWithReplies / totalReviews : 0;
-
-          const recentPosts = posts?.filter(p => {
-            const postDate = new Date(p.created_at);
-            return postDate >= thirtyDaysAgo;
-          }) || [];
-
-          const monthlyViews = analytics?.reduce((sum, a) => sum + (a.views || 0), 0) || 0;
-          const monthlyActions = analytics?.reduce((sum, a) =>
-            sum + (a.actions_phone || 0) + (a.actions_website || 0) + (a.actions_directions || 0), 0
-          ) || 0;
-
-          const photoCount = businessData.photos?.length || 0;
-          const recentPhotos = 0;
-
-          const healthScore = calculateHealthScore({
-            profileCompleteness: businessData.profile_completeness || 0,
-            totalReviews,
-            averageRating,
-            reviewResponseRate,
-            totalPosts: posts?.length || 0,
-            recentPostsCount: recentPosts.length,
-            photoCount,
-            recentPhotosCount: recentPhotos,
-            monthlyViews,
-            monthlyActions,
-          });
-
-          await supabase.from('health_scores').insert({
-            business_id: business.id,
-            score: healthScore.overall,
-            profile_score: healthScore.profileScore,
-            review_score: healthScore.reviewScore,
-            post_score: healthScore.postScore,
-            photo_score: healthScore.photoScore,
-            engagement_score: healthScore.engagementScore,
-            action_items: healthScore.actionItems,
-            calculated_at: new Date().toISOString(),
-          });
-        }
-
-        await supabase
+        await supabaseAdmin
           .from('businesses')
           .update({ last_synced_at: new Date().toISOString() })
           .eq('id', business.id);
@@ -221,7 +221,7 @@ export async function POST(request: NextRequest) {
         businessResults.push({ businessId: business.id, synced: businessSynced });
       }
 
-      await supabase
+      await supabaseAdmin
         .from('gmb_sync_sessions')
         .update({
           status: 'completed',
@@ -237,7 +237,7 @@ export async function POST(request: NextRequest) {
         message: `Successfully synced ${totalSynced} items`,
       });
     } catch (error: any) {
-      await supabase
+      await supabaseAdmin
         .from('gmb_sync_sessions')
         .update({
           status: 'failed',

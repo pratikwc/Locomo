@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { supabaseAdmin } from '@/lib/supabase-admin';
 import { getAuthenticatedUserId } from '@/lib/auth-utils';
 import { listReviews } from '@/lib/gmb-client';
 import { getValidAccessToken } from '@/lib/google-token-manager';
@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Business ID required' }, { status: 400 });
     }
 
-    const { data: business, error: businessError } = await supabase
+    const { data: business, error: businessError } = await supabaseAdmin
       .from('businesses')
       .select('*, google_accounts!inner(*)')
       .eq('id', businessId)
@@ -78,14 +78,14 @@ export async function POST(request: NextRequest) {
         sentiment,
       };
 
-      const { data: existingReview } = await supabase
+      const { data: existingReview } = await supabaseAdmin
         .from('reviews')
         .select('id')
         .eq('google_review_id', reviewData.google_review_id)
         .maybeSingle();
 
       if (existingReview) {
-        await supabase
+        await supabaseAdmin
           .from('reviews')
           .update({
             ...reviewData,
@@ -93,13 +93,13 @@ export async function POST(request: NextRequest) {
           })
           .eq('id', existingReview.id);
       } else {
-        await supabase.from('reviews').insert(reviewData);
+        await supabaseAdmin.from('reviews').insert(reviewData);
       }
 
       syncedCount++;
     }
 
-    await supabase
+    await supabaseAdmin
       .from('businesses')
       .update({ last_synced_at: new Date().toISOString() })
       .eq('id', businessId);
