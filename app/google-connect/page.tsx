@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, CheckCircle2 } from 'lucide-react';
+import { api } from '@/lib/api-client';
 
 export default function GoogleConnectPage() {
   const router = useRouter();
@@ -49,17 +50,13 @@ export default function GoogleConnectPage() {
     setError(null);
 
     try {
-      const response = await fetch('/api/google/auth-url');
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || data.error || 'Failed to get authorization URL');
-      }
+      const data = await api.get<{ authUrl?: string }>('/api/google/auth-url');
 
       if (data.authUrl) {
         window.location.href = data.authUrl;
       } else {
         setError('Failed to get Google authorization URL');
+        setLoading(false);
       }
     } catch (err: any) {
       console.error('Connect Google error:', err);

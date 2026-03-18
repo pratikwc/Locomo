@@ -74,6 +74,9 @@ const GMB_ACCOUNT_MANAGEMENT_BASE = 'https://mybusinessaccountmanagement.googlea
 // Performance API v1 — replaces deprecated v4 insights:basicMetrics
 const GMB_PERFORMANCE_BASE = 'https://businessprofileperformance.googleapis.com/v1';
 
+const LOCATION_READ_MASK =
+  'name,title,storefrontAddress,phoneNumbers,websiteUri,regularHours,categories,profile,metadata,latlng';
+
 export interface GMBApiError {
   code: number;
   message: string;
@@ -212,7 +215,7 @@ export async function listBusinessLocations(
 ): Promise<GMBLocation[]> {
   try {
     const data = await fetchWithAuth(
-      `${GMB_BUSINESS_INFO_BASE}/${accountName}/locations?readMask=name,title,storefrontAddress,phoneNumbers,websiteUri,regularHours,categories,profile,metadata,latlng`,
+      `${GMB_BUSINESS_INFO_BASE}/${accountName}/locations?readMask=${LOCATION_READ_MASK}`,
       accessToken
     );
     return data.locations || [];
@@ -243,7 +246,7 @@ export async function getBusinessInfo(
 ): Promise<GMBLocation | null> {
   try {
     const data = await fetchWithAuth(
-      `${GMB_BUSINESS_INFO_BASE}/${locationName}?readMask=name,title,storefrontAddress,phoneNumbers,websiteUri,regularHours,categories,profile,metadata,latlng`,
+      `${GMB_BUSINESS_INFO_BASE}/${locationName}?readMask=${LOCATION_READ_MASK}`,
       accessToken
     );
     return data;

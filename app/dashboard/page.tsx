@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Phone, Navigation, Globe, CalendarDays, Eye, MousePointerClick, Star, MessageSquare, RefreshCw, Loader as Loader2, CircleAlert as AlertCircle, ChevronDown, Copy, MapPin, Tag, Clock, Code as Code2, Settings } from 'lucide-react';
 import { format, formatDistanceToNowStrict } from 'date-fns';
+import { api } from '@/lib/api-client';
 
 interface LoadingStep {
   label: string;
@@ -170,14 +171,7 @@ export default function DashboardPage() {
 
   const fetchData = async () => {
     try {
-      const statusRes = await fetch('/api/gmb/check-status', { credentials: 'include' });
-      const statusData = await statusRes.json();
-
-      if (!statusRes.ok) {
-        setFetchFailed(true);
-        setLoading(false);
-        return;
-      }
+      const statusData = await api.get<any>('/api/gmb/check-status');
 
       if (statusData.has_gmb_access === false && statusData.connected === true) {
         setHasGMBAccess(false);
@@ -195,13 +189,8 @@ export default function DashboardPage() {
       const bid = statusData.businesses[0].id;
       setBusinessId(bid);
 
-      const res = await fetch(`/api/dashboard?businessId=${bid}`, { credentials: 'include' });
-      const data = await res.json();
-
-      if (res.ok) {
-        setDashData(data);
-      }
-
+      const data = await api.get<DashboardPayload>(`/api/dashboard?businessId=${bid}`);
+      setDashData(data);
       setLoading(false);
     } catch {
       setFetchFailed(true);
@@ -213,7 +202,7 @@ export default function DashboardPage() {
     if (syncing) return;
     setSyncing(true);
     try {
-      await fetch('/api/sync/all', { method: 'POST' });
+      await api.post('/api/sync/all');
       hasFetchedRef.current = false;
       await fetchData();
       hasFetchedRef.current = true;

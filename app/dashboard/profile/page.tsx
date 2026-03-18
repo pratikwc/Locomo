@@ -12,6 +12,7 @@ import { RefreshCw, Save, User, Phone, Mail, Shield, Calendar, Link2 } from 'luc
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/auth-context';
 import { format } from 'date-fns';
+import { api } from '@/lib/api-client';
 
 interface Business {
   id: string;
@@ -46,19 +47,9 @@ export default function ProfilePage() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      console.log('[Profile] Fetching GMB status...');
-      const statusResponse = await fetch('/api/gmb/check-status');
-      const statusData = await statusResponse.json();
-
-      console.log('[Profile] Status data:', {
-        connected: statusData.connected,
-        has_gmb_access: statusData.has_gmb_access,
-        email: statusData.email,
-        businesses: statusData.businesses?.length || 0,
-      });
+      const statusData = await api.get<any>('/api/gmb/check-status');
 
       if (statusData.connected) {
-        console.log('[Profile] Setting user profile and Google account info');
         setUserProfile({
           display_name: statusData.display_name,
           profile_photo_url: statusData.profile_photo_url,
@@ -71,17 +62,10 @@ export default function ProfilePage() {
           last_synced: statusData.last_synced || new Date().toISOString(),
         });
 
-        if (statusData.businesses && statusData.businesses.length > 0) {
-          const businessId = statusData.businesses[0].id;
-
-          const businessResponse = await fetch(`/api/businesses/${businessId}`);
-          if (businessResponse.ok) {
-            const businessData = await businessResponse.json();
-            setBusiness(businessData);
-          }
+        if (statusData.businesses?.length > 0) {
+          const businessData = await api.get<Business>(`/api/businesses/${statusData.businesses[0].id}`);
+          setBusiness(businessData);
         }
-      } else {
-        console.log('[Profile] No Google account connected');
       }
     } catch (error) {
       console.error('[Profile] Error fetching data:', error);
@@ -93,18 +77,9 @@ export default function ProfilePage() {
   const handleSync = async () => {
     setSyncing(true);
     try {
-      const response = await fetch('/api/gmb/sync-businesses', { method: 'POST' });
-      const data = await response.json();
-
-      if (response.ok) {
-        toast({
-          title: 'Sync Complete',
-          description: data.message,
-        });
-        await fetchData();
-      } else {
-        throw new Error(data.error);
-      }
+      const data = await api.post<{ message?: string }>('/api/gmb/sync-businesses');
+      toast({ title: 'Sync Complete', description: data.message });
+      await fetchData();
     } catch (error: any) {
       toast({
         title: 'Sync Failed',

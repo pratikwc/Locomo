@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { AlertCircle, CheckCircle2, ExternalLink, RefreshCw, Store, Loader2 } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { SimpleProgress } from '@/components/simple-progress';
+import { api } from '@/lib/api-client';
 
 export default function GMBOnboardingPage() {
   const router = useRouter();
@@ -21,33 +22,14 @@ export default function GMBOnboardingPage() {
     setError(null);
 
     try {
-      // Get current user
-      const userResponse = await fetch('/api/auth/me');
-      if (!userResponse.ok) {
-        throw new Error('Not authenticated');
-      }
-      const { user } = await userResponse.json();
+      const { user } = await api.get<{ user: { id: string } }>('/api/auth/me');
 
-      // Trigger GMB verification
-      const verifyResponse = await fetch('/api/gmb/verify-access', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.id }),
-      });
-
-      const verifyData = await verifyResponse.json();
-
-      if (!verifyResponse.ok) {
-        setError(verifyData);
-        return;
-      }
+      const verifyData = await api.post<{ hasGmbAccess: boolean }>('/api/gmb/verify-access', { userId: user.id });
 
       if (verifyData.hasGmbAccess) {
-        // Sync businesses
-        await fetch('/api/gmb/sync-businesses', { method: 'POST' });
+        await api.post('/api/gmb/sync-businesses');
         router.push('/dashboard?success=gmb_connected');
       } else {
-        // No GMB account found
         setStatus({ has_gmb_access: false, connected: true });
       }
     } catch (err: any) {
@@ -61,8 +43,7 @@ export default function GMBOnboardingPage() {
   const checkStatus = async () => {
     setChecking(true);
     try {
-      const response = await fetch('/api/gmb/check-status');
-      const data = await response.json();
+      const data = await api.get<any>('/api/gmb/check-status');
       setStatus(data);
 
       if (data.has_gmb_access && data.businesses?.length > 0) {

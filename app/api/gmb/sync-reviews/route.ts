@@ -37,16 +37,14 @@ async function syncReviewsForBusiness(
     return { synced: 0, error: gmbErr?.userMessage || apiError.message || 'Failed to fetch reviews from Google' };
   }
 
-  let syncedCount = 0;
-
-  for (const review of reviews) {
+  const now = new Date().toISOString();
+  const reviewsToUpsert = reviews.map(review => {
     const rating = parseStarRating(review.starRating);
-
     let sentiment: 'positive' | 'neutral' | 'negative' = 'neutral';
     if (rating >= 4) sentiment = 'positive';
     else if (rating <= 2) sentiment = 'negative';
 
-    const reviewData = {
+    return {
       business_id: business.id,
       google_review_id: review.reviewId,
       google_review_name: review.name,
@@ -61,28 +59,22 @@ async function syncReviewsForBusiness(
         : null,
       reply_status: review.reviewReply ? 'replied' : 'pending',
       sentiment,
+      updated_at: now,
     };
+  });
 
-    const { data: existingReview } = await supabaseAdmin
+  if (reviewsToUpsert.length > 0) {
+    const { error: upsertError } = await supabaseAdmin
       .from('reviews')
-      .select('id')
-      .eq('google_review_id', reviewData.google_review_id)
-      .maybeSingle();
+      .upsert(reviewsToUpsert, { onConflict: 'google_review_id' });
 
-    if (existingReview) {
-      await supabaseAdmin
-        .from('reviews')
-        .update({
-          ...reviewData,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', existingReview.id);
-    } else {
-      await supabaseAdmin.from('reviews').insert(reviewData);
+    if (upsertError) {
+      console.error(`[Sync Reviews] Upsert error for ${business.id}:`, upsertError);
+      return { synced: 0, error: upsertError.message };
     }
-
-    syncedCount++;
   }
+
+  const syncedCount = reviewsToUpsert.length;
 
   await supabaseAdmin
     .from('businesses')
@@ -149,13 +141,18 @@ export async function POST(request: NextRequest) {
     let totalSynced = 0;
     const errors: string[] = [];
 
-    for (const business of businesses) {
-      const result = await syncReviewsForBusiness(business, accessToken);
-      totalSynced += result.synced;
-      if (result.error) {
-        errors.push(`${business.name}: ${result.error}`);
+    const results = await Promise.allSettled(
+      businesses.map(b => syncReviewsForBusiness(b, accessToken))
+    );
+
+    results.forEach((result, i) => {
+      if (result.status === 'fulfilled') {
+        totalSynced += result.value.synced;
+        if (result.value.error) errors.push(`${businesses[i].name}: ${result.value.error}`);
+      } else {
+        errors.push(`${businesses[i].name}: ${result.reason?.message || 'Unknown error'}`);
       }
-    }
+    });
 
     return NextResponse.json({
       success: true,

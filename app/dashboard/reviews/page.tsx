@@ -21,6 +21,7 @@ import {
   ThumbsUp, ThumbsDown, Minus, ChevronDown, ChevronUp, MapPin, Building2,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+import { api } from '@/lib/api-client';
 
 interface Business {
   id: string;
@@ -133,12 +134,9 @@ export default function ReviewsPage() {
       const url = locationId && locationId !== 'all'
         ? `/api/reviews?businessId=${locationId}`
         : '/api/reviews';
-      const res = await fetch(url);
-      const data = await res.json();
-      if (res.ok) {
-        setAllReviews(data.reviews || []);
-        if (data.businesses) setBusinesses(data.businesses);
-      }
+      const data = await api.get<{ reviews: Review[]; businesses?: Business[] }>(url);
+      setAllReviews(data.reviews || []);
+      if (data.businesses) setBusinesses(data.businesses);
     } catch {
       console.error('Error fetching reviews');
     }
@@ -203,11 +201,7 @@ export default function ReviewsPage() {
 
       if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
       syncIntervalRef.current = setInterval(async () => {
-        await fetch('/api/gmb/sync-reviews', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({}),
-        });
+        await api.post('/api/gmb/sync-reviews', {});
       }, SYNC_INTERVAL_MS);
     }
   }, [businesses, subscribeToAllBusinesses]);
@@ -221,12 +215,11 @@ export default function ReviewsPage() {
   const handleGenerateAIReply = async (review: Review) => {
     setLoadingAI(true);
     try {
-      const res = await fetch('/api/ai/generate-reply', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reviewText: review.review_text, rating: review.rating, reviewerName: review.reviewer_name }),
+      const data = await api.post<{ reply?: string }>('/api/ai/generate-reply', {
+        reviewText: review.review_text,
+        rating: review.rating,
+        reviewerName: review.reviewer_name,
       });
-      const data = await res.json();
       if (data.reply) setReplyText(data.reply);
     } catch {
       toast({ title: 'Error', description: 'Failed to generate AI reply', variant: 'destructive' });
@@ -239,19 +232,11 @@ export default function ReviewsPage() {
     if (!selectedReview || !replyText.trim()) return;
     setSubmitting(true);
     try {
-      const res = await fetch('/api/reviews', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          reviewId: selectedReview.id,
-          replyText: replyText.trim(),
-          businessId: selectedReview.business_id,
-        }),
+      await api.post('/api/reviews', {
+        reviewId: selectedReview.id,
+        replyText: replyText.trim(),
+        businessId: selectedReview.business_id,
       });
-      if (!res.ok) {
-        const d = await res.json();
-        throw new Error(d.error || 'Failed to save reply');
-      }
       setAllReviews(prev =>
         prev.map(r => r.id === selectedReview.id
           ? { ...r, reply_text: replyText.trim(), reply_status: 'replied' }
@@ -272,25 +257,12 @@ export default function ReviewsPage() {
     setSyncing(true);
     setSyncError(null);
     try {
-      const body = selectedLocationId !== 'all'
-        ? { businessId: selectedLocationId }
-        : {};
-      const res = await fetch('/api/gmb/sync-reviews', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        await fetchReviews(selectedLocationId !== 'all' ? selectedLocationId : undefined);
-        toast({ title: 'Sync Complete', description: data.message || `Synced ${data.synced ?? 0} review(s)` });
-      } else {
-        const msg = data.error || 'Sync failed';
-        setSyncError(msg);
-        toast({ title: 'Sync Failed', description: msg, variant: 'destructive' });
-      }
-    } catch {
-      const msg = 'Could not reach Google. Check your internet connection.';
+      const body = selectedLocationId !== 'all' ? { businessId: selectedLocationId } : {};
+      const data = await api.post<{ message?: string; synced?: number }>('/api/gmb/sync-reviews', body);
+      await fetchReviews(selectedLocationId !== 'all' ? selectedLocationId : undefined);
+      toast({ title: 'Sync Complete', description: data.message || `Synced ${data.synced ?? 0} review(s)` });
+    } catch (err: any) {
+      const msg = err.message || 'Could not reach Google. Check your internet connection.';
       setSyncError(msg);
       toast({ title: 'Sync Failed', description: msg, variant: 'destructive' });
     } finally {

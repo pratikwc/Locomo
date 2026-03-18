@@ -1,6 +1,9 @@
 import { supabaseAdmin } from './supabase-admin';
 import { refreshAccessToken } from './google-client';
 
+// In-process token cache: avoids redundant DB fetches within the same server request lifecycle.
+const _tokenCache = new Map<string, { token: string; expiresAt: number }>();
+
 export interface GoogleTokens {
   accessToken: string;
   refreshToken: string;
@@ -8,6 +11,12 @@ export interface GoogleTokens {
 }
 
 export async function getValidAccessToken(userId: string): Promise<string | null> {
+  // Return cached token if still valid for >60 s
+  const cached = _tokenCache.get(userId);
+  if (cached && cached.expiresAt > Date.now() + 60_000) {
+    return cached.token;
+  }
+
   try {
     const { data: googleAccounts, error } = await supabaseAdmin
       .from('google_accounts')
@@ -32,6 +41,7 @@ export async function getValidAccessToken(userId: string): Promise<string | null
     const fiveMinutesFromNow = new Date(now.getTime() + 5 * 60 * 1000);
 
     if (expiresAt > fiveMinutesFromNow) {
+      _tokenCache.set(userId, { token: googleAccount.access_token, expiresAt: expiresAt.getTime() });
       return googleAccount.access_token;
     }
 
@@ -58,6 +68,7 @@ export async function getValidAccessToken(userId: string): Promise<string | null
       }
 
       console.log('[Token Manager] Successfully refreshed access token');
+      _tokenCache.set(userId, { token: tokenData.access_token, expiresAt: newExpiresAt.getTime() });
       return tokenData.access_token;
     } catch (refreshError) {
       console.error('[Token Manager] Failed to refresh token:', refreshError);
