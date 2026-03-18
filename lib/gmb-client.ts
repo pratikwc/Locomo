@@ -278,7 +278,7 @@ export async function listReviews(
     : locationName;
 
   // Use the v4 mybusiness.googleapis.com endpoint — the only one that works
-  const url = `${GMB_V4_BASE}/accounts/${accountId}/locations/${locationId}/reviews?pageSize=50`;
+  const url = `${GMB_V4_BASE}/accounts/${accountId}/locations/${locationId}/reviews?pageSize=400`;
   console.log(`[GMB] Fetching reviews: ${url}`);
 
   const data = await fetchWithAuth(url, accessToken);
