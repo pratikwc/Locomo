@@ -67,7 +67,9 @@ interface UserProfile {
   picture?: string;
 }
 
-const GMB_API_BASE = 'https://mybusinessbusinessinformation.googleapis.com/v1';
+// API base URLs
+const GMB_V4_BASE = 'https://mybusiness.googleapis.com/v4';
+const GMB_BUSINESS_INFO_BASE = 'https://mybusinessbusinessinformation.googleapis.com/v1';
 const GMB_ACCOUNT_MANAGEMENT_BASE = 'https://mybusinessaccountmanagement.googleapis.com/v1';
 
 export interface GMBApiError {
@@ -91,12 +93,11 @@ function parseGMBError(status: number, errorText: string): GMBApiError {
     return {
       ...baseError,
       retryable: true,
-      retryAfter: 900000, // 15 minutes in ms
+      retryAfter: 900000,
       userMessage: 'Rate limit exceeded. Too many requests to Google My Business API.',
       recoverySteps: [
         'Wait 15 minutes before trying again',
         'Check your Google Cloud Console quota usage',
-        'Consider implementing request caching',
       ],
     };
   }
@@ -108,9 +109,8 @@ function parseGMBError(status: number, errorText: string): GMBApiError {
       userMessage: 'Access denied. Google My Business APIs may not be enabled.',
       recoverySteps: [
         'Go to Google Cloud Console > APIs & Services > Library',
-        'Enable these APIs: Google My Business API, My Business Business Information API, My Business Account Management API',
-        'Wait 5 minutes for changes to propagate',
-        'Try connecting again',
+        'Enable: My Business Reviews API, My Business Business Information API',
+        'Wait 5 minutes then try again',
       ],
     };
   }
@@ -119,11 +119,7 @@ function parseGMBError(status: number, errorText: string): GMBApiError {
     return {
       ...baseError,
       retryable: false,
-      userMessage: 'Authentication failed. Your access token may be expired.',
-      recoverySteps: [
-        'Disconnect and reconnect your Google account',
-        'Ensure you grant all requested permissions',
-      ],
+      userMessage: 'Authentication failed. Please reconnect your Google account.',
     };
   }
 
@@ -131,12 +127,7 @@ function parseGMBError(status: number, errorText: string): GMBApiError {
     return {
       ...baseError,
       retryable: false,
-      userMessage: 'No Google My Business account found.',
-      recoverySteps: [
-        'Visit business.google.com to create a business profile',
-        'Verify your business with Google',
-        'Try connecting again after verification',
-      ],
+      userMessage: 'Resource not found. The location or account path may be incorrect.',
     };
   }
 
@@ -144,12 +135,8 @@ function parseGMBError(status: number, errorText: string): GMBApiError {
     return {
       ...baseError,
       retryable: true,
-      retryAfter: 5000, // 5 seconds
+      retryAfter: 5000,
       userMessage: 'Google servers are temporarily unavailable.',
-      recoverySteps: [
-        'Wait a few minutes and try again',
-        'Check Google Workspace Status Dashboard for outages',
-      ],
     };
   }
 
@@ -174,17 +161,14 @@ async function fetchWithAuth(url: string, accessToken: string, options: RequestI
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.error(`[GMB] API Error - Status: ${response.status}, URL: ${url}, Response: ${errorText}`);
-
+    console.error(`[GMB] API Error - Status: ${response.status}, URL: ${url}`);
     const parsedError = parseGMBError(response.status, errorText);
     const error = new Error(parsedError.userMessage) as Error & { gmbError: GMBApiError };
     error.gmbError = parsedError;
     throw error;
   }
 
-  const data = await response.json();
-  console.log(`[GMB] Success: ${url}`, JSON.stringify(data, null, 2));
-  return data;
+  return response.json();
 }
 
 export async function fetchWithRetry<T>(
@@ -200,11 +184,7 @@ export async function fetchWithRetry<T>(
     } catch (error: any) {
       lastError = error;
       const gmbError = error.gmbError as GMBApiError | undefined;
-
-      if (!gmbError?.retryable || attempt === maxRetries) {
-        throw error;
-      }
-
+      if (!gmbError?.retryable || attempt === maxRetries) throw error;
       const delay = gmbError.retryAfter || (baseDelay * Math.pow(2, attempt));
       console.log(`[GMB] Retry attempt ${attempt + 1}/${maxRetries} after ${delay}ms`);
       await sleep(delay);
@@ -215,26 +195,12 @@ export async function fetchWithRetry<T>(
 }
 
 export async function getUserProfile(accessToken: string): Promise<UserProfile> {
-  const data = await fetchWithAuth(
-    'https://www.googleapis.com/oauth2/v2/userinfo',
-    accessToken
-  );
-
-  return {
-    id: data.id,
-    email: data.email,
-    name: data.name,
-    picture: data.picture,
-  };
+  const data = await fetchWithAuth('https://www.googleapis.com/oauth2/v2/userinfo', accessToken);
+  return { id: data.id, email: data.email, name: data.name, picture: data.picture };
 }
 
 export async function listGMBAccounts(accessToken: string): Promise<GMBAccount[]> {
-  const data = await fetchWithAuth(
-    `${GMB_ACCOUNT_MANAGEMENT_BASE}/accounts`,
-    accessToken
-  );
-
-  console.log('[GMB] Successfully retrieved accounts:', data.accounts?.length || 0);
+  const data = await fetchWithAuth(`${GMB_ACCOUNT_MANAGEMENT_BASE}/accounts`, accessToken);
   return data.accounts || [];
 }
 
@@ -244,10 +210,9 @@ export async function listBusinessLocations(
 ): Promise<GMBLocation[]> {
   try {
     const data = await fetchWithAuth(
-      `${GMB_API_BASE}/${accountName}/locations?readMask=name,title,storefrontAddress,phoneNumbers,websiteUri,regularHours,categories,profile,metadata,latlng`,
+      `${GMB_BUSINESS_INFO_BASE}/${accountName}/locations?readMask=name,title,storefrontAddress,phoneNumbers,websiteUri,regularHours,categories,profile,metadata,latlng`,
       accessToken
     );
-
     return data.locations || [];
   } catch (error) {
     console.error('Error listing business locations:', error);
@@ -261,16 +226,8 @@ export async function discoverAccountsFromLocations(
   try {
     const userProfile = await getUserProfile(accessToken);
     const accountName = `accounts/${userProfile.id}`;
-
     const locations = await listBusinessLocations(accessToken, accountName);
-
-    if (locations.length > 0) {
-      return {
-        accountName,
-        locations
-      };
-    }
-
+    if (locations.length > 0) return { accountName, locations };
     return null;
   } catch (error) {
     console.error('Error discovering accounts from locations:', error);
@@ -284,10 +241,9 @@ export async function getBusinessInfo(
 ): Promise<GMBLocation | null> {
   try {
     const data = await fetchWithAuth(
-      `${GMB_API_BASE}/${locationName}?readMask=name,title,storefrontAddress,phoneNumbers,websiteUri,regularHours,categories,profile,metadata,latlng`,
+      `${GMB_BUSINESS_INFO_BASE}/${locationName}?readMask=name,title,storefrontAddress,phoneNumbers,websiteUri,regularHours,categories,profile,metadata,latlng`,
       accessToken
     );
-
     return data;
   } catch (error) {
     console.error('Error getting business info:', error);
@@ -295,24 +251,38 @@ export async function getBusinessInfo(
   }
 }
 
+/**
+ * Fetch reviews using the correct Google My Business API v4 endpoint.
+ *
+ * Correct URL (v4):
+ *   GET https://mybusiness.googleapis.com/v4/accounts/{accountId}/locations/{locationId}/reviews
+ *
+ * NOTE: mybusinessreviews.googleapis.com/v1 does NOT support standalone
+ * locations/{id}/reviews — that always returns 404.
+ */
 export async function listReviews(
   accessToken: string,
   accountName: string,
   locationName: string
 ): Promise<GMBReview[]> {
-  console.log('[GMB] Fetching reviews for location:', locationName);
-  console.log('[GMB] Account name:', accountName);
+  if (!accountName || !accountName.startsWith('accounts/')) {
+    throw new Error(
+      `[GMB] Cannot fetch reviews: invalid accountName "${accountName}". Must be "accounts/{id}".`
+    );
+  }
 
-  const normalizedLocation = locationName.startsWith('locations/')
-    ? locationName
-    : `locations/${locationName}`;
+  // Extract numeric IDs only
+  const accountId = accountName.replace('accounts/', '');
+  const locationId = locationName.startsWith('locations/')
+    ? locationName.replace('locations/', '')
+    : locationName;
 
-  const url = `https://mybusinessreviews.googleapis.com/v1/${normalizedLocation}/reviews?pageSize=50`;
-  console.log('[GMB] Reviews URL:', url);
+  // Use the v4 mybusiness.googleapis.com endpoint — the only one that works
+  const url = `${GMB_V4_BASE}/accounts/${accountId}/locations/${locationId}/reviews?pageSize=50`;
+  console.log(`[GMB] Fetching reviews: ${url}`);
 
   const data = await fetchWithAuth(url, accessToken);
-
-  console.log('[GMB] Reviews response:', JSON.stringify(data, null, 2));
+  console.log(`[GMB] Got ${data.reviews?.length || 0} reviews for location ${locationId}`);
   return data.reviews || [];
 }
 
@@ -322,15 +292,17 @@ export async function replyToReview(
   replyText: string
 ): Promise<boolean> {
   try {
-    await fetchWithAuth(
-      `https://mybusinessreviews.googleapis.com/v1/${reviewName}/reply`,
-      accessToken,
-      {
-        method: 'PUT',
-        body: JSON.stringify({ comment: replyText }),
-      }
-    );
+    // reviewName from Google is the full v4 path:
+    // "accounts/{accountId}/locations/{locationId}/reviews/{reviewId}"
+    // Use v4 base for the reply endpoint too
+    const url = reviewName.startsWith('accounts/')
+      ? `${GMB_V4_BASE}/${reviewName}/reply`
+      : `${GMB_V4_BASE}/${reviewName}/reply`;
 
+    await fetchWithAuth(url, accessToken, {
+      method: 'PUT',
+      body: JSON.stringify({ comment: replyText }),
+    });
     return true;
   } catch (error) {
     console.error('Error replying to review:', error);
@@ -345,14 +317,10 @@ export async function updateBusinessInfo(
 ): Promise<boolean> {
   try {
     await fetchWithAuth(
-      `${GMB_API_BASE}/${locationName}?updateMask=${Object.keys(updateData).join(',')}`,
+      `${GMB_BUSINESS_INFO_BASE}/${locationName}?updateMask=${Object.keys(updateData).join(',')}`,
       accessToken,
-      {
-        method: 'PATCH',
-        body: JSON.stringify(updateData),
-      }
+      { method: 'PATCH', body: JSON.stringify(updateData) }
     );
-
     return true;
   } catch (error) {
     console.error('Error updating business info:', error);
@@ -362,30 +330,16 @@ export async function updateBusinessInfo(
 
 export function calculateProfileCompleteness(location: GMBLocation): number {
   let score = 0;
-  const maxScore = 100;
-  const weights = {
-    title: 10,
-    address: 15,
-    phone: 10,
-    website: 10,
-    hours: 15,
-    categories: 10,
-    description: 15,
-    location: 15,
-  };
-
+  const weights = { title: 10, address: 15, phone: 10, website: 10, hours: 15, categories: 10, description: 15, location: 15 };
   if (location.title) score += weights.title;
   if (location.storefrontAddress) score += weights.address;
   if (location.phoneNumbers?.primaryPhone) score += weights.phone;
   if (location.websiteUri) score += weights.website;
-  if (location.regularHours?.periods && location.regularHours.periods.length > 0) {
-    score += weights.hours;
-  }
+  if (location.regularHours?.periods?.length) score += weights.hours;
   if (location.categories?.primaryCategory) score += weights.categories;
   if (location.profile?.description) score += weights.description;
   if (location.latlng) score += weights.location;
-
-  return Math.round((score / maxScore) * 100);
+  return Math.round((score / 100) * 100);
 }
 
 export interface BusinessData {
@@ -426,11 +380,6 @@ export function transformLocationToBusinessData(location: GMBLocation): Business
   };
 }
 
-interface InsightsMetric {
-  metricType: string;
-  value: number;
-}
-
 interface LocationInsights {
   date: string;
   views: number;
@@ -448,73 +397,36 @@ export async function getLocationInsights(
 ): Promise<LocationInsights[]> {
   try {
     const url = `https://mybusiness.googleapis.com/v4/${locationName}/insights:basicMetrics`;
-
     const body = {
       locationNames: [locationName],
       basicRequest: {
         metricRequests: [
-          { metric: 'QUERIES_DIRECT' },
-          { metric: 'QUERIES_INDIRECT' },
-          { metric: 'VIEWS_MAPS' },
-          { metric: 'VIEWS_SEARCH' },
-          { metric: 'ACTIONS_WEBSITE' },
-          { metric: 'ACTIONS_PHONE' },
+          { metric: 'QUERIES_DIRECT' }, { metric: 'QUERIES_INDIRECT' },
+          { metric: 'VIEWS_MAPS' }, { metric: 'VIEWS_SEARCH' },
+          { metric: 'ACTIONS_WEBSITE' }, { metric: 'ACTIONS_PHONE' },
           { metric: 'ACTIONS_DRIVING_DIRECTIONS' },
         ],
-        timeRange: {
-          startTime: startDate,
-          endTime: endDate,
-        },
+        timeRange: { startTime: startDate, endTime: endDate },
       },
     };
-
-    const data = await fetchWithAuth(url, accessToken, {
-      method: 'POST',
-      body: JSON.stringify(body),
-    });
-
+    const data = await fetchWithAuth(url, accessToken, { method: 'POST', body: JSON.stringify(body) });
     const insights: LocationInsights[] = [];
-
-    if (data.locationMetrics && data.locationMetrics.length > 0) {
-      const locationMetric = data.locationMetrics[0];
-
-      if (locationMetric.metricValues) {
-        const metricsByDate: { [key: string]: any } = {};
-
-        for (const metricValue of locationMetric.metricValues) {
-          const date = metricValue.dimensionalValues?.[0]?.timeDimension?.timeRange?.startTime || '';
-
-          if (!metricsByDate[date]) {
-            metricsByDate[date] = {
-              date,
-              views: 0,
-              searches: 0,
-              actionsPhone: 0,
-              actionsWebsite: 0,
-              actionsDirections: 0,
-            };
-          }
-
-          const metric = metricValue.metric;
-          const value = parseInt(metricValue.totalValue?.value || '0');
-
-          if (metric === 'VIEWS_MAPS' || metric === 'VIEWS_SEARCH') {
-            metricsByDate[date].views += value;
-          } else if (metric === 'QUERIES_DIRECT' || metric === 'QUERIES_INDIRECT') {
-            metricsByDate[date].searches += value;
-          } else if (metric === 'ACTIONS_PHONE') {
-            metricsByDate[date].actionsPhone = value;
-          } else if (metric === 'ACTIONS_WEBSITE') {
-            metricsByDate[date].actionsWebsite = value;
-          } else if (metric === 'ACTIONS_DRIVING_DIRECTIONS') {
-            metricsByDate[date].actionsDirections = value;
-          }
+    if (data.locationMetrics?.[0]?.metricValues) {
+      const metricsByDate: Record<string, any> = {};
+      for (const mv of data.locationMetrics[0].metricValues) {
+        const date = mv.dimensionalValues?.[0]?.timeDimension?.timeRange?.startTime || '';
+        if (!metricsByDate[date]) {
+          metricsByDate[date] = { date, views: 0, searches: 0, actionsPhone: 0, actionsWebsite: 0, actionsDirections: 0 };
         }
-
-        insights.push(...Object.values(metricsByDate));
+        const value = parseInt(mv.totalValue?.value || '0');
+        if (mv.metric === 'VIEWS_MAPS' || mv.metric === 'VIEWS_SEARCH') metricsByDate[date].views += value;
+        else if (mv.metric === 'QUERIES_DIRECT' || mv.metric === 'QUERIES_INDIRECT') metricsByDate[date].searches += value;
+        else if (mv.metric === 'ACTIONS_PHONE') metricsByDate[date].actionsPhone = value;
+        else if (mv.metric === 'ACTIONS_WEBSITE') metricsByDate[date].actionsWebsite = value;
+        else if (mv.metric === 'ACTIONS_DRIVING_DIRECTIONS') metricsByDate[date].actionsDirections = value;
       }
+      insights.push(...Object.values(metricsByDate));
     }
-
     return insights;
   } catch (error) {
     console.error('Error fetching location insights:', error);

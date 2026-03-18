@@ -5,18 +5,12 @@ import { listReviews } from '@/lib/gmb-client';
 import { getValidAccessToken } from '@/lib/google-token-manager';
 
 const STAR_RATING_MAP: Record<string, number> = {
-  ONE: 1,
-  TWO: 2,
-  THREE: 3,
-  FOUR: 4,
-  FIVE: 5,
+  ONE: 1, TWO: 2, THREE: 3, FOUR: 4, FIVE: 5,
 };
 
 function parseStarRating(starRating: string): number {
   const upper = starRating.toUpperCase().replace('STAR_RATING_', '');
-  const mapped = STAR_RATING_MAP[upper];
-  if (mapped !== undefined) return mapped;
-  return parseInt(upper) || 3;
+  return STAR_RATING_MAP[upper] ?? parseInt(upper) ?? 3;
 }
 
 async function syncReviewsForBusiness(
@@ -172,9 +166,6 @@ export async function POST(request: NextRequest) {
     });
   } catch (error: any) {
     console.error('[Sync Reviews] Error:', error);
-    return NextResponse.json(
-      { error: error.message || 'Failed to sync reviews' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: error.message || 'Failed to sync reviews' }, { status: 500 });
   }
 }
