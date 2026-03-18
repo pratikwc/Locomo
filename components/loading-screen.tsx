@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, Loader2, Circle } from 'lucide-react';
+import { CircleCheck as CheckCircle2, Loader as Loader2, Circle } from 'lucide-react';
 import { SimpleProgress } from '@/components/simple-progress';
 
 interface LoadingStep {
@@ -17,11 +17,11 @@ interface LoadingScreenProps {
 
 export function LoadingScreen({ steps, progress, title = "Loading Local SEO", subtitle = "Setting up your dashboard" }: LoadingScreenProps) {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 p-4">
+    <div className="min-h-screen flex items-center justify-center bg-growmatiq-beige p-4">
       <div className="w-full max-w-md">
         <div className="bg-white rounded-2xl shadow-lg p-8 space-y-6">
           <div className="flex justify-center mb-6">
-            <div className="w-20 h-20 bg-gradient-to-br from-blue-600 to-cyan-600 rounded-full flex items-center justify-center">
+            <div className="w-20 h-20 rounded-full flex items-center justify-center" style={{ backgroundColor: '#6931FF' }}>
               <div className="w-14 h-14 bg-white/20 rounded-full flex items-center justify-center">
                 <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
@@ -43,7 +43,7 @@ export function LoadingScreen({ steps, progress, title = "Loading Local SEO", su
                   <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0" />
                 )}
                 {step.status === 'loading' && (
-                  <Loader2 className="h-5 w-5 text-blue-600 animate-spin flex-shrink-0" />
+                  <Loader2 className="h-5 w-5 animate-spin flex-shrink-0" style={{ color: '#6931FF' }} />
                 )}
                 {step.status === 'pending' && (
                   <Circle className="h-5 w-5 text-gray-300 flex-shrink-0" />

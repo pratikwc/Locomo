@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, Phone, Lock } from 'lucide-react';
+import { Loader as Loader2, Phone, Lock } from 'lucide-react';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -87,15 +87,15 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 p-4">
-      <Card className="w-full max-w-md">
+    <div className="min-h-screen flex items-center justify-center bg-growmatiq-beige p-4">
+      <Card className="w-full max-w-md border-growmatiq-taupe/20 shadow-lg">
         <CardHeader className="space-y-1">
           <div className="flex items-center justify-center mb-4">
-            <div className="w-16 h-16 bg-gradient-to-br from-blue-600 to-cyan-600 rounded-2xl flex items-center justify-center">
-              <span className="text-2xl font-bold text-white">L</span>
+            <div className="w-16 h-16 rounded-2xl flex items-center justify-center" style={{ backgroundColor: '#6931FF' }}>
+              <span className="text-2xl font-bold text-growmatiq-beige">G</span>
             </div>
           </div>
-          <CardTitle className="text-2xl font-bold text-center">Welcome to Locomo</CardTitle>
+          <CardTitle className="text-2xl font-bold text-center text-growmatiq-dark">Welcome to Growmatiq</CardTitle>
           <CardDescription className="text-center">
             {step === 'phone'
               ? 'Enter your phone number to get started'
@@ -177,7 +177,7 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={() => setStep('phone')}
-                  className="text-blue-600 hover:underline"
+                  className="hover:underline" style={{ color: '#6931FF' }}
                 >
                   Change number
                 </button>
@@ -185,7 +185,7 @@ export default function LoginPage() {
                   type="button"
                   onClick={handleResendOTP}
                   disabled={countdown > 0 || loading}
-                  className="text-blue-600 hover:underline disabled:text-gray-400 disabled:no-underline"
+                  className="hover:underline disabled:text-gray-400 disabled:no-underline" style={{ color: '#6931FF' }}
                 >
                   Resend OTP
                 </button>

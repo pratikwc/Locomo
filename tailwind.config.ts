@@ -20,6 +20,10 @@ const config: Config = {
         sm: 'calc(var(--radius) - 4px)',
       },
       colors: {
+        'growmatiq-purple': '#6931FF',
+        'growmatiq-dark': '#0d0a0b',
+        'growmatiq-beige': '#f5f1ed',
+        'growmatiq-taupe': '#706c61',
         background: 'hsl(var(--background))',
         foreground: 'hsl(var(--foreground))',
         card: {

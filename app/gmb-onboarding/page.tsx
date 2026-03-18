@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { AlertCircle, CheckCircle2, ExternalLink, RefreshCw, Store, Loader2 } from 'lucide-react';
+import { CircleAlert as AlertCircle, CircleCheck as CheckCircle2, ExternalLink, RefreshCw, Store, Loader as Loader2 } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { SimpleProgress } from '@/components/simple-progress';
 import { api } from '@/lib/api-client';
@@ -80,13 +80,13 @@ export default function GMBOnboardingPage() {
       info: 'Google will send a verification code via mail, phone, or email',
     },
     {
-      title: 'Connect to Locomo',
+      title: 'Connect to Growmatiq',
       description: 'Once verified, return here and check connection',
     },
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
+    <div className="min-h-screen bg-growmatiq-beige p-6">
       <div className="max-w-4xl mx-auto space-y-6">
         <div className="text-center space-y-2">
           <Store className="h-16 w-16 mx-auto text-slate-700" />
@@ -97,13 +97,13 @@ export default function GMBOnboardingPage() {
         </div>
 
         {verifying && (
-          <Card className="border-blue-200 bg-blue-50">
+          <Card className="border-growmatiq-taupe/30" style={{ backgroundColor: '#f0ebff' }}>
             <CardContent className="pt-6">
               <div className="flex items-center gap-4">
-                <Loader2 className="h-8 w-8 text-blue-600 animate-spin" />
+                <Loader2 className="h-8 w-8 animate-spin" style={{ color: '#6931FF' }} />
                 <div className="flex-1">
-                  <h3 className="font-semibold text-blue-900 mb-1">Verifying GMB Access...</h3>
-                  <p className="text-sm text-blue-700">
+                  <h3 className="font-semibold mb-1" style={{ color: '#0d0a0b' }}>Verifying GMB Access...</h3>
+                  <p className="text-sm" style={{ color: '#6931FF' }}>
                     Checking your Google Business Profile. This may take a few moments.
                   </p>
                   <SimpleProgress value={50} className="mt-2" />
@@ -213,7 +213,7 @@ export default function GMBOnboardingPage() {
               {steps.map((step, index) => (
                 <div key={index} className="flex gap-4">
                   <div className="flex-shrink-0">
-                    <div className="h-10 w-10 rounded-full bg-slate-700 text-white flex items-center justify-center font-semibold">
+                    <div className="h-10 w-10 rounded-full text-growmatiq-beige flex items-center justify-center font-semibold" style={{ backgroundColor: '#6931FF' }}>
                       {index + 1}
                     </div>
                   </div>
@@ -251,7 +251,7 @@ export default function GMBOnboardingPage() {
                 onClick={verifyGMBAccess}
                 disabled={checking || verifying}
                 size="lg"
-                className="bg-slate-900 hover:bg-slate-800"
+                style={{ backgroundColor: '#6931FF' }} className="hover:opacity-90"
               >
                 {checking || verifying ? (
                   <>

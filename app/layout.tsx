@@ -7,7 +7,7 @@ import { Toaster } from '@/components/ui/toaster';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'Locomo - AI-Powered Marketing Platform',
+  title: 'Growmatiq - AI-Powered Marketing Platform',
   description: 'Help local businesses improve their Google My Business profile visibility',
   openGraph: {
     images: [

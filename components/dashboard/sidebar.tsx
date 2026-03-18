@@ -5,18 +5,7 @@ import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import {
-  LayoutDashboard,
-  Star,
-  FileText,
-  TrendingUp,
-  Edit3,
-  Calendar,
-  Settings,
-  LogOut,
-  BarChart3,
-  Users,
-} from 'lucide-react';
+import { LayoutDashboard, Star, FileText, TrendingUp, CreditCard as Edit3, Calendar, Settings, LogOut, ChartBar as BarChart3, Users } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 
 interface NavItem {
@@ -84,13 +73,13 @@ export function Sidebar() {
   );
 
   return (
-    <div className="flex h-full w-64 flex-col border-r bg-gray-50">
+    <div className="flex h-full w-64 flex-col border-r bg-growmatiq-beige">
       <div className="flex h-16 items-center justify-between border-b bg-white px-4">
         <div className="flex items-center space-x-2">
-          <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-cyan-600 rounded-lg flex items-center justify-center">
-            <span className="text-lg font-bold text-white">G</span>
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#6931FF' }}>
+            <span className="text-lg font-bold text-growmatiq-beige">G</span>
           </div>
-          <span className="text-lg font-bold">GrowthPro AI</span>
+          <span className="text-lg font-bold text-growmatiq-dark">Growmatiq</span>
         </div>
       </div>
 
@@ -113,9 +102,10 @@ export function Sidebar() {
                 className={cn(
                   'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
                   isActive
-                    ? 'bg-green-50 text-green-700 shadow-sm'
-                    : 'text-gray-700 hover:bg-gray-100'
+                    ? 'shadow-sm'
+                    : 'text-growmatiq-dark hover:bg-white/60'
                 )}
+                style={isActive ? { backgroundColor: '#6931FF', color: '#f5f1ed' } : undefined}
               >
                 <Icon className="h-4 w-4" />
                 {item.title}
@@ -144,7 +134,7 @@ export function Sidebar() {
 
       <div className="border-t bg-white p-4">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-green-400 to-green-600 flex items-center justify-center text-white font-semibold">
+          <div className="w-10 h-10 rounded-full flex items-center justify-center font-semibold text-growmatiq-beige" style={{ backgroundColor: '#6931FF' }}>
             {user?.phoneNumber?.slice(-2) || 'U'}
           </div>
           <div className="flex-1 min-w-0">

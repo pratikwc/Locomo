@@ -300,7 +300,7 @@ export default function DashboardPage() {
   const category = business?.category || '';
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-growmatiq-beige">
       <div className="max-w-[1280px] mx-auto px-4 py-6 space-y-5">
 
         {/* Header */}
@@ -328,7 +328,7 @@ export default function DashboardPage() {
           <div className="flex items-center gap-2 flex-1">
             <MapPin className="h-4 w-4 text-gray-400" />
             <span className="font-semibold text-gray-900 text-sm">{business?.name || 'Your Business'}</span>
-            <Badge className="bg-green-100 text-green-700 border border-green-200 text-xs font-semibold">
+            <Badge className="text-xs font-semibold border" style={{ backgroundColor: '#f0ebff', color: '#6931FF', borderColor: '#c9b8ff' }}>
               Verified
             </Badge>
           </div>
@@ -555,7 +555,7 @@ export default function DashboardPage() {
                   <p className="text-xs text-gray-600 leading-relaxed line-clamp-4">
                     {services.join(', ')}
                   </p>
-                  <button className="text-xs text-blue-500 mt-1 hover:underline">Refresh Services</button>
+                  <button className="text-xs mt-1 hover:underline" style={{ color: '#6931FF' }}>Refresh Services</button>
                 </div>
               )}
 
@@ -600,7 +600,7 @@ export default function DashboardPage() {
                 {business?.website && (
                   <div>
                     <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-0.5">Website</p>
-                    <p className="text-xs text-blue-500 truncate">{business.website}</p>
+                    <p className="text-xs truncate" style={{ color: '#6931FF' }}>{business.website}</p>
                   </div>
                 )}
               </div>
@@ -658,7 +658,7 @@ export default function DashboardPage() {
                           (healthScore?.score ?? stats.profileCompleteness) >= 80
                             ? 'bg-green-500'
                             : (healthScore?.score ?? stats.profileCompleteness) >= 60
-                            ? 'bg-blue-500'
+                            ? 'bg-primary'
                             : 'bg-yellow-500'
                         }`}
                         style={{ width: `${healthScore?.score ?? stats.profileCompleteness}%` }}
@@ -666,7 +666,7 @@ export default function DashboardPage() {
                     </div>
                     <span className={`text-xs font-semibold mt-0.5 inline-block ${
                       overallScoreLabel.color === 'green' ? 'text-green-600' :
-                      overallScoreLabel.color === 'blue' ? 'text-blue-600' :
+                      overallScoreLabel.color === 'blue' ? 'text-primary' :
                       overallScoreLabel.color === 'yellow' ? 'text-yellow-600' : 'text-red-600'
                     }`}>{overallScoreLabel.text}</span>
                   </div>
@@ -727,7 +727,7 @@ export default function DashboardPage() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="w-full mt-2 text-xs text-blue-600 hover:text-blue-700"
+                    className="w-full mt-2 text-xs text-primary hover:text-primary/80"
                     onClick={() => router.push('/dashboard/reviews')}
                   >
                     View All Reviews
