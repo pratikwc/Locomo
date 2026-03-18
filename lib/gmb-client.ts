@@ -71,6 +71,8 @@ interface UserProfile {
 const GMB_V4_BASE = 'https://mybusiness.googleapis.com/v4';
 const GMB_BUSINESS_INFO_BASE = 'https://mybusinessbusinessinformation.googleapis.com/v1';
 const GMB_ACCOUNT_MANAGEMENT_BASE = 'https://mybusinessaccountmanagement.googleapis.com/v1';
+// Performance API v1 — replaces deprecated v4 insights:basicMetrics
+const GMB_PERFORMANCE_BASE = 'https://businessprofileperformance.googleapis.com/v1';
 
 export interface GMBApiError {
   code: number;
@@ -109,7 +111,7 @@ function parseGMBError(status: number, errorText: string): GMBApiError {
       userMessage: 'Access denied. Google My Business APIs may not be enabled.',
       recoverySteps: [
         'Go to Google Cloud Console > APIs & Services > Library',
-        'Enable: My Business Reviews API, My Business Business Information API',
+        'Enable: My Business Reviews API, My Business Business Information API, Business Profile Performance API',
         'Wait 5 minutes then try again',
       ],
     };
@@ -252,13 +254,12 @@ export async function getBusinessInfo(
 }
 
 /**
- * Fetch reviews using the correct Google My Business API v4 endpoint.
+ * Fetch ALL reviews using GMB API v4, paginating through every page.
  *
- * Correct URL (v4):
+ * Correct URL:
  *   GET https://mybusiness.googleapis.com/v4/accounts/{accountId}/locations/{locationId}/reviews
  *
- * NOTE: mybusinessreviews.googleapis.com/v1 does NOT support standalone
- * locations/{id}/reviews — that always returns 404.
+ * Max pageSize = 200 per request. Loops until no nextPageToken is returned.
  */
 export async function listReviews(
   accessToken: string,
@@ -271,19 +272,36 @@ export async function listReviews(
     );
   }
 
-  // Extract numeric IDs only
   const accountId = accountName.replace('accounts/', '');
   const locationId = locationName.startsWith('locations/')
     ? locationName.replace('locations/', '')
     : locationName;
 
-  // Use the v4 mybusiness.googleapis.com endpoint — the only one that works
-  const url = `${GMB_V4_BASE}/accounts/${accountId}/locations/${locationId}/reviews?pageSize=400`;
-  console.log(`[GMB] Fetching reviews: ${url}`);
+  const allReviews: GMBReview[] = [];
+  let pageToken: string | undefined;
+  let page = 1;
 
-  const data = await fetchWithAuth(url, accessToken);
-  console.log(`[GMB] Got ${data.reviews?.length || 0} reviews for location ${locationId}`);
-  return data.reviews || [];
+  do {
+    const url = new URL(
+      `${GMB_V4_BASE}/accounts/${accountId}/locations/${locationId}/reviews`
+    );
+    url.searchParams.set('pageSize', '200'); // Google's maximum per page
+    if (pageToken) url.searchParams.set('pageToken', pageToken);
+
+    console.log(`[GMB] Fetching reviews page ${page}: ${url.toString()}`);
+    const data = await fetchWithAuth(url.toString(), accessToken);
+
+    if (data.reviews?.length) {
+      allReviews.push(...data.reviews);
+      console.log(`[GMB] Page ${page}: ${data.reviews.length} reviews (total: ${allReviews.length})`);
+    }
+
+    pageToken = data.nextPageToken;
+    page++;
+  } while (pageToken);
+
+  console.log(`[GMB] Fetched all ${allReviews.length} reviews for location ${locationId}`);
+  return allReviews;
 }
 
 export async function replyToReview(
@@ -292,13 +310,7 @@ export async function replyToReview(
   replyText: string
 ): Promise<boolean> {
   try {
-    // reviewName from Google is the full v4 path:
-    // "accounts/{accountId}/locations/{locationId}/reviews/{reviewId}"
-    // Use v4 base for the reply endpoint too
-    const url = reviewName.startsWith('accounts/')
-      ? `${GMB_V4_BASE}/${reviewName}/reply`
-      : `${GMB_V4_BASE}/${reviewName}/reply`;
-
+    const url = `${GMB_V4_BASE}/${reviewName.replace(/^accounts\//, 'accounts/')}/reply`;
     await fetchWithAuth(url, accessToken, {
       method: 'PUT',
       body: JSON.stringify({ comment: replyText }),
@@ -380,56 +392,139 @@ export function transformLocationToBusinessData(location: GMBLocation): Business
   };
 }
 
-interface LocationInsights {
+export interface LocationInsights {
   date: string;
-  views: number;
-  searches: number;
-  actionsPhone: number;
-  actionsWebsite: number;
-  actionsDirections: number;
+  profileViews: number;      // sum of all 4 impression metrics
+  phoneCalls: number;
+  websiteClicks: number;
+  directionRequests: number;
 }
 
+export interface LocationInsightsTotals {
+  profileViews: number;
+  phoneCalls: number;
+  websiteClicks: number;
+  directionRequests: number;
+  clickRate: number;          // (total actions / profileViews) * 100
+  dailyBreakdown: LocationInsights[];
+}
+
+/**
+ * Fetch performance metrics using the Business Profile Performance API v1.
+ *
+ * REPLACES the deprecated v4 `insights:basicMetrics` endpoint (removed Feb 2023).
+ *
+ * Endpoint:
+ *   GET https://businessprofileperformance.googleapis.com/v1/locations/{locationId}:fetchMultiDailyMetricsTimeSeries
+ *
+ * locationName: "locations/{numericId}" OR just "{numericId}" — both handled.
+ *
+ * IMPORTANT: Requires "Business Profile Performance API" enabled in Google Cloud Console.
+ * Default quota is 0 — you must request access from Google after enabling.
+ */
 export async function getLocationInsights(
   accessToken: string,
   locationName: string,
-  startDate: string,
-  endDate: string
-): Promise<LocationInsights[]> {
+  startDate: string,  // e.g. "2024-01-01"
+  endDate: string     // e.g. "2024-01-31"
+): Promise<LocationInsightsTotals> {
+  const empty: LocationInsightsTotals = {
+    profileViews: 0,
+    phoneCalls: 0,
+    websiteClicks: 0,
+    directionRequests: 0,
+    clickRate: 0,
+    dailyBreakdown: [],
+  };
+
   try {
-    const url = `https://mybusiness.googleapis.com/v4/${locationName}/insights:basicMetrics`;
-    const body = {
-      locationNames: [locationName],
-      basicRequest: {
-        metricRequests: [
-          { metric: 'QUERIES_DIRECT' }, { metric: 'QUERIES_INDIRECT' },
-          { metric: 'VIEWS_MAPS' }, { metric: 'VIEWS_SEARCH' },
-          { metric: 'ACTIONS_WEBSITE' }, { metric: 'ACTIONS_PHONE' },
-          { metric: 'ACTIONS_DRIVING_DIRECTIONS' },
-        ],
-        timeRange: { startTime: startDate, endTime: endDate },
-      },
-    };
-    const data = await fetchWithAuth(url, accessToken, { method: 'POST', body: JSON.stringify(body) });
-    const insights: LocationInsights[] = [];
-    if (data.locationMetrics?.[0]?.metricValues) {
-      const metricsByDate: Record<string, any> = {};
-      for (const mv of data.locationMetrics[0].metricValues) {
-        const date = mv.dimensionalValues?.[0]?.timeDimension?.timeRange?.startTime || '';
-        if (!metricsByDate[date]) {
-          metricsByDate[date] = { date, views: 0, searches: 0, actionsPhone: 0, actionsWebsite: 0, actionsDirections: 0 };
-        }
-        const value = parseInt(mv.totalValue?.value || '0');
-        if (mv.metric === 'VIEWS_MAPS' || mv.metric === 'VIEWS_SEARCH') metricsByDate[date].views += value;
-        else if (mv.metric === 'QUERIES_DIRECT' || mv.metric === 'QUERIES_INDIRECT') metricsByDate[date].searches += value;
-        else if (mv.metric === 'ACTIONS_PHONE') metricsByDate[date].actionsPhone = value;
-        else if (mv.metric === 'ACTIONS_WEBSITE') metricsByDate[date].actionsWebsite = value;
-        else if (mv.metric === 'ACTIONS_DRIVING_DIRECTIONS') metricsByDate[date].actionsDirections = value;
-      }
-      insights.push(...Object.values(metricsByDate));
+    const locationId = locationName.startsWith('locations/')
+      ? locationName
+      : `locations/${locationName}`;
+
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+
+    // Use URLSearchParams with append() so repeated dailyMetrics keys are preserved
+    const p = new URLSearchParams();
+    p.append('dailyRange.start_date.year',  String(start.getFullYear()));
+    p.append('dailyRange.start_date.month', String(start.getMonth() + 1));
+    p.append('dailyRange.start_date.day',   String(start.getDate()));
+    p.append('dailyRange.end_date.year',    String(end.getFullYear()));
+    p.append('dailyRange.end_date.month',   String(end.getMonth() + 1));
+    p.append('dailyRange.end_date.day',     String(end.getDate()));
+    p.append('dailyMetrics', 'CALL_CLICKS');
+    p.append('dailyMetrics', 'WEBSITE_CLICKS');
+    p.append('dailyMetrics', 'BUSINESS_DIRECTION_REQUESTS');
+    p.append('dailyMetrics', 'BUSINESS_IMPRESSIONS_DESKTOP_MAPS');
+    p.append('dailyMetrics', 'BUSINESS_IMPRESSIONS_DESKTOP_SEARCH');
+    p.append('dailyMetrics', 'BUSINESS_IMPRESSIONS_MOBILE_MAPS');
+    p.append('dailyMetrics', 'BUSINESS_IMPRESSIONS_MOBILE_SEARCH');
+
+    const url = `${GMB_PERFORMANCE_BASE}/${locationId}:fetchMultiDailyMetricsTimeSeries?${p.toString()}`;
+    console.log(`[GMB] Fetching performance metrics: ${url}`);
+
+    const data = await fetchWithAuth(url, accessToken);
+
+    if (!data.multiDailyMetricTimeSeries?.length) {
+      console.warn('[GMB] Performance API returned no data');
+      return empty;
     }
-    return insights;
+
+    // Accumulate by date
+    const byDate: Record<string, LocationInsights> = {};
+
+    const getOrCreate = (dateStr: string): LocationInsights => {
+      if (!byDate[dateStr]) {
+        byDate[dateStr] = { date: dateStr, profileViews: 0, phoneCalls: 0, websiteClicks: 0, directionRequests: 0 };
+      }
+      return byDate[dateStr];
+    };
+
+    for (const series of data.multiDailyMetricTimeSeries) {
+      const metric: string = series.dailyMetricTimeSeries?.dailyMetric;
+      const points: any[] = series.dailyMetricTimeSeries?.timeSeries?.datedValues || [];
+
+      for (const point of points) {
+        const { year, month, day } = point.date;
+        const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const value = parseInt(point.value || '0', 10);
+        const row = getOrCreate(dateStr);
+
+        switch (metric) {
+          case 'CALL_CLICKS':                          row.phoneCalls       += value; break;
+          case 'WEBSITE_CLICKS':                       row.websiteClicks    += value; break;
+          case 'BUSINESS_DIRECTION_REQUESTS':          row.directionRequests += value; break;
+          case 'BUSINESS_IMPRESSIONS_DESKTOP_MAPS':
+          case 'BUSINESS_IMPRESSIONS_DESKTOP_SEARCH':
+          case 'BUSINESS_IMPRESSIONS_MOBILE_MAPS':
+          case 'BUSINESS_IMPRESSIONS_MOBILE_SEARCH':   row.profileViews     += value; break;
+        }
+      }
+    }
+
+    const dailyBreakdown = Object.values(byDate).sort((a, b) => a.date.localeCompare(b.date));
+
+    const totals = dailyBreakdown.reduce(
+      (acc, row) => {
+        acc.profileViews      += row.profileViews;
+        acc.phoneCalls        += row.phoneCalls;
+        acc.websiteClicks     += row.websiteClicks;
+        acc.directionRequests += row.directionRequests;
+        return acc;
+      },
+      { profileViews: 0, phoneCalls: 0, websiteClicks: 0, directionRequests: 0 }
+    );
+
+    const totalActions = totals.phoneCalls + totals.websiteClicks + totals.directionRequests;
+    const clickRate = totals.profileViews > 0
+      ? parseFloat(((totalActions / totals.profileViews) * 100).toFixed(2))
+      : 0;
+
+    return { ...totals, clickRate, dailyBreakdown };
+
   } catch (error) {
-    console.error('Error fetching location insights:', error);
-    return [];
+    console.error('[GMB] Error fetching location insights:', error);
+    return empty;
   }
 }
