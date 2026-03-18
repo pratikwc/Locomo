@@ -43,6 +43,8 @@ interface Review {
 }
 
 const SYNC_INTERVAL_MS = 5 * 60 * 1000;
+const INITIAL_VISIBLE = 20;
+const LOAD_MORE_COUNT = 10;
 
 function ratingDistribution(reviews: Review[]) {
   const dist: Record<number, number> = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
@@ -121,6 +123,7 @@ export default function ReviewsPage() {
   const [isLive, setIsLive] = useState(false);
   const [newReviewIds, setNewReviewIds] = useState<Set<string>>(new Set());
   const [expandedReplies, setExpandedReplies] = useState<Set<string>>(new Set());
+  const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE);
   const { toast } = useToast();
   const syncIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
@@ -211,6 +214,7 @@ export default function ReviewsPage() {
 
   const handleLocationChange = async (locId: string) => {
     setSelectedLocationId(locId);
+    setVisibleCount(INITIAL_VISIBLE);
     await fetchReviews(locId);
   };
 
@@ -297,6 +301,11 @@ export default function ReviewsPage() {
   const openReplyDialog = (review: Review) => {
     setSelectedReview(review);
     setReplyText(review.reply_text || '');
+  };
+
+  const handleFilterChange = (value: string) => {
+    setFilter(value);
+    setVisibleCount(INITIAL_VISIBLE);
   };
 
   const toggleReply = (id: string) => {
@@ -499,7 +508,7 @@ export default function ReviewsPage() {
           </div>
 
           <div className="px-4 pt-3 pb-4">
-            <Tabs value={filter} onValueChange={setFilter}>
+            <Tabs value={filter} onValueChange={handleFilterChange}>
               <TabsList className="h-8">
                 <TabsTrigger value="all" className="text-xs px-3">All ({allReviews.length})</TabsTrigger>
                 <TabsTrigger value="pending" className="text-xs px-3 flex items-center gap-1.5">
@@ -531,7 +540,7 @@ export default function ReviewsPage() {
                   </div>
                 ) : (
                   <div className="divide-y divide-gray-50 mt-1">
-                    {filteredReviews.map(review => {
+                    {filteredReviews.slice(0, visibleCount).map(review => {
                       const expanded = expandedReplies.has(review.id);
                       return (
                         <div
@@ -615,6 +624,21 @@ export default function ReviewsPage() {
                         </div>
                       );
                     })}
+                    {visibleCount < filteredReviews.length && (
+                      <div className="pt-5 pb-2 flex flex-col items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setVisibleCount(v => v + LOAD_MORE_COUNT)}
+                          className="min-w-[160px]"
+                        >
+                          Load more reviews
+                        </Button>
+                        <p className="text-xs text-gray-400">
+                          Showing {Math.min(visibleCount, filteredReviews.length)} of {filteredReviews.length}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )}
               </TabsContent>

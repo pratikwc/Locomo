@@ -129,15 +129,15 @@ async function syncBusinessAnalytics(businessId: string, userId: string): Promis
     endDate
   );
 
-  for (const insight of insights) {
+  for (const insight of insights.dailyBreakdown) {
     const analyticsData = {
       business_id: businessId,
       date: insight.date,
-      views: insight.views,
-      searches: insight.searches,
-      actions_phone: insight.actionsPhone,
-      actions_website: insight.actionsWebsite,
-      actions_directions: insight.actionsDirections,
+      views: insight.profileViews,
+      searches: insight.profileViews,
+      actions_phone: insight.phoneCalls,
+      actions_website: insight.websiteClicks,
+      actions_directions: insight.directionRequests,
     };
 
     const { data: existing } = await supabase
