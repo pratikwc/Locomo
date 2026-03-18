@@ -80,6 +80,8 @@ export async function GET(request: NextRequest) {
       hasRefreshToken: !!googleAccount.refresh_token,
       account: {
         email: googleAccount.email,
+        displayName: googleAccount.display_name,
+        profilePhotoUrl: googleAccount.profile_photo_url,
         connectedAt: googleAccount.created_at,
         tokenExpired: expired,
         scopes: googleAccount.scopes || [],

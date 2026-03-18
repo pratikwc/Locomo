@@ -61,7 +61,7 @@ const navItems: NavItem[] = [
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { user, logout } = useAuth();
+  const { user, googleProfile, logout } = useAuth();
 
   const handleLogout = async () => {
     await logout();
@@ -134,15 +134,24 @@ export function Sidebar() {
 
       <div className="border-t bg-white p-4">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full flex items-center justify-center font-semibold text-growmatiq-beige" style={{ backgroundColor: '#6931FF' }}>
-            {user?.phoneNumber?.slice(-2) || 'U'}
-          </div>
+          {googleProfile?.profilePhotoUrl ? (
+            <img
+              src={googleProfile.profilePhotoUrl}
+              alt={googleProfile.displayName || 'Profile'}
+              className="w-10 h-10 rounded-full object-cover flex-shrink-0"
+              referrerPolicy="no-referrer"
+            />
+          ) : (
+            <div className="w-10 h-10 rounded-full flex items-center justify-center font-semibold text-growmatiq-beige flex-shrink-0" style={{ backgroundColor: '#6931FF' }}>
+              {(googleProfile?.displayName || user?.phoneNumber || 'U').charAt(0).toUpperCase()}
+            </div>
+          )}
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-gray-900 truncate">
-              {user?.phoneNumber || 'User'}
+              {googleProfile?.displayName || user?.phoneNumber || 'User'}
             </p>
-            <p className="text-xs text-gray-500">
-              {user?.role === 'admin' ? 'Administrator' : 'User'}
+            <p className="text-xs text-gray-500 truncate">
+              {googleProfile?.email || (user?.role === 'admin' ? 'Administrator' : 'User')}
             </p>
           </div>
         </div>

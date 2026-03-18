@@ -9,8 +9,15 @@ interface User {
   status: 'active' | 'disabled' | 'pending';
 }
 
+interface GoogleProfile {
+  displayName: string | null;
+  profilePhotoUrl: string | null;
+  email: string | null;
+}
+
 interface AuthContextType {
   user: User | null;
+  googleProfile: GoogleProfile | null;
   loading: boolean;
   login: (phoneNumber: string, otpCode: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -24,6 +31,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [googleProfile, setGoogleProfile] = useState<GoogleProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hasGoogleAccount, setHasGoogleAccount] = useState<boolean | null>(null);
@@ -38,6 +46,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (response.ok) {
         const data = await response.json();
         setHasGoogleAccount(!!data.connected);
+        if (data.connected && data.account) {
+          setGoogleProfile({
+            displayName: data.account.displayName || null,
+            profilePhotoUrl: data.account.profilePhotoUrl || null,
+            email: data.account.email || null,
+          });
+        }
       } else {
         setHasGoogleAccount(false);
       }
@@ -104,13 +119,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await fetch('/api/auth/logout', { method: 'POST' });
       setUser(null);
       setHasGoogleAccount(false);
+      setGoogleProfile(null);
     } catch (err) {
       console.error('Logout error:', err);
     }
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, sendOTP, error, hasGoogleAccount, checkGoogleConnection }}>
+    <AuthContext.Provider value={{ user, googleProfile, loading, login, logout, sendOTP, error, hasGoogleAccount, checkGoogleConnection }}>
       {children}
     </AuthContext.Provider>
   );
