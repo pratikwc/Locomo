@@ -15,32 +15,49 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const businessId = searchParams.get('businessId');
 
-    if (!businessId) {
-      return NextResponse.json({ error: 'Business ID required' }, { status: 400 });
-    }
-
-    const { data: business, error: businessError } = await supabase
+    const { data: userBusinesses, error: bizError } = await supabase
       .from('businesses')
-      .select('id')
-      .eq('id', businessId)
-      .eq('user_id', userId)
-      .single();
+      .select('id, name')
+      .eq('user_id', userId);
 
-    if (businessError || !business) {
-      return NextResponse.json({ error: 'Business not found' }, { status: 404 });
+    if (bizError || !userBusinesses || userBusinesses.length === 0) {
+      return NextResponse.json({ reviews: [], businesses: [] });
     }
 
-    const { data: reviews, error: reviewsError } = await supabase
+    const businessMap: Record<string, string> = {};
+    userBusinesses.forEach(b => { businessMap[b.id] = b.name; });
+
+    const allowedIds = userBusinesses.map(b => b.id);
+
+    let query = supabase
       .from('reviews')
       .select('*')
-      .eq('business_id', businessId)
+      .in('business_id', allowedIds)
       .order('review_date', { ascending: false });
+
+    if (businessId && allowedIds.includes(businessId)) {
+      query = supabase
+        .from('reviews')
+        .select('*')
+        .eq('business_id', businessId)
+        .order('review_date', { ascending: false });
+    }
+
+    const { data: reviews, error: reviewsError } = await query;
 
     if (reviewsError) {
       throw new Error(reviewsError.message);
     }
 
-    return NextResponse.json({ reviews: reviews || [] });
+    const reviewsWithLocation = (reviews || []).map(r => ({
+      ...r,
+      business_name: businessMap[r.business_id] || 'Unknown Location',
+    }));
+
+    return NextResponse.json({
+      reviews: reviewsWithLocation,
+      businesses: userBusinesses,
+    });
   } catch (error: any) {
     console.error('[Get Reviews] Error:', error);
     return NextResponse.json(

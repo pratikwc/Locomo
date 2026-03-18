@@ -15,11 +15,22 @@ import {
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabase';
-import { Star, Sparkles, Send, Search, RefreshCw, WifiOff, Loader as Loader2, MessageSquare, CircleCheck as CheckCircle2, Clock, CircleAlert as AlertCircle, ThumbsUp, ThumbsDown, Minus, ChevronDown, ChevronUp } from 'lucide-react';
+import {
+  Star, Sparkles, Send, Search, RefreshCw, WifiOff, Loader as Loader2,
+  MessageSquare, CircleCheck as CheckCircle2, Clock, CircleAlert as AlertCircle,
+  ThumbsUp, ThumbsDown, Minus, ChevronDown, ChevronUp, MapPin, Building2,
+} from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+
+interface Business {
+  id: string;
+  name: string;
+}
 
 interface Review {
   id: string;
+  business_id: string;
+  business_name: string;
   reviewer_name: string;
   reviewer_photo_url: string | null;
   rating: number;
@@ -85,8 +96,19 @@ function ReviewerAvatar({ name }: { name: string }) {
   );
 }
 
+function LocationBadge({ name }: { name: string }) {
+  return (
+    <span className="inline-flex items-center gap-1 text-[11px] font-medium text-blue-600 bg-blue-50 border border-blue-100 rounded-full px-2 py-0.5">
+      <MapPin className="h-2.5 w-2.5" />
+      {name}
+    </span>
+  );
+}
+
 export default function ReviewsPage() {
-  const [reviews, setReviews] = useState<Review[]>([]);
+  const [allReviews, setAllReviews] = useState<Review[]>([]);
+  const [businesses, setBusinesses] = useState<Business[]>([]);
+  const [selectedLocationId, setSelectedLocationId] = useState<string>('all');
   const [selectedReview, setSelectedReview] = useState<Review | null>(null);
   const [replyText, setReplyText] = useState('');
   const [loadingAI, setLoadingAI] = useState(false);
@@ -96,7 +118,6 @@ export default function ReviewsPage() {
   const [syncError, setSyncError] = useState<string | null>(null);
   const [filter, setFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [businessId, setBusinessId] = useState<string | null>(null);
   const [isLive, setIsLive] = useState(false);
   const [newReviewIds, setNewReviewIds] = useState<Set<string>>(new Set());
   const [expandedReplies, setExpandedReplies] = useState<Set<string>>(new Set());
@@ -104,28 +125,38 @@ export default function ReviewsPage() {
   const syncIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
-  const fetchReviewsById = useCallback(async (bizId: string) => {
+  const fetchReviews = useCallback(async (locationId?: string) => {
     try {
-      const res = await fetch(`/api/reviews?businessId=${bizId}`);
+      const url = locationId && locationId !== 'all'
+        ? `/api/reviews?businessId=${locationId}`
+        : '/api/reviews';
+      const res = await fetch(url);
       const data = await res.json();
-      if (res.ok) setReviews(data.reviews || []);
+      if (res.ok) {
+        setAllReviews(data.reviews || []);
+        if (data.businesses) setBusinesses(data.businesses);
+      }
     } catch {
       console.error('Error fetching reviews');
     }
   }, []);
 
-  const subscribeToReviews = useCallback((bizId: string) => {
+  const subscribeToAllBusinesses = useCallback((businessIds: string[]) => {
     if (channelRef.current) supabase.removeChannel(channelRef.current);
+    if (businessIds.length === 0) return;
 
     const channel = supabase
-      .channel(`reviews:${bizId}`)
+      .channel('reviews:all')
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'reviews', filter: `business_id=eq.${bizId}` },
+        { event: '*', schema: 'public', table: 'reviews' },
         payload => {
+          const newRecord = payload.new as Review | undefined;
+          if (newRecord && !businessIds.includes(newRecord.business_id)) return;
+
           if (payload.eventType === 'INSERT') {
             const r = payload.new as Review;
-            setReviews(prev => prev.find(x => x.id === r.id) ? prev : [r, ...prev]);
+            setAllReviews(prev => prev.find(x => x.id === r.id) ? prev : [r, ...prev]);
             setNewReviewIds(prev => new Set(prev).add(r.id));
             setTimeout(() => {
               setNewReviewIds(prev => { const n = new Set(prev); n.delete(r.id); return n; });
@@ -133,9 +164,9 @@ export default function ReviewsPage() {
             toast({ title: 'New Review', description: `${r.reviewer_name} left a ${r.rating}-star review` });
           } else if (payload.eventType === 'UPDATE') {
             const r = payload.new as Review;
-            setReviews(prev => prev.map(x => x.id === r.id ? r : x));
+            setAllReviews(prev => prev.map(x => x.id === r.id ? { ...x, ...r } : x));
           } else if (payload.eventType === 'DELETE') {
-            setReviews(prev => prev.filter(x => x.id !== payload.old.id));
+            setAllReviews(prev => prev.filter(x => x.id !== payload.old.id));
           }
         }
       )
@@ -148,22 +179,7 @@ export default function ReviewsPage() {
     const init = async () => {
       try {
         setLoading(true);
-        const statusRes = await fetch('/api/gmb/check-status');
-        const statusData = await statusRes.json();
-
-        if (statusData.businesses?.length > 0) {
-          const bizId = statusData.businesses[0].id;
-          setBusinessId(bizId);
-          await fetchReviewsById(bizId);
-          subscribeToReviews(bizId);
-          syncIntervalRef.current = setInterval(async () => {
-            await fetch('/api/gmb/sync-reviews', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ businessId: bizId }),
-            });
-          }, SYNC_INTERVAL_MS);
-        }
+        await fetchReviews();
       } catch {
         toast({ title: 'Error', description: 'Failed to load reviews', variant: 'destructive' });
       } finally {
@@ -176,7 +192,27 @@ export default function ReviewsPage() {
       if (channelRef.current) supabase.removeChannel(channelRef.current);
       if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
     };
-  }, [fetchReviewsById, subscribeToReviews, toast]);
+  }, [fetchReviews, toast]);
+
+  useEffect(() => {
+    if (businesses.length > 0) {
+      subscribeToAllBusinesses(businesses.map(b => b.id));
+
+      if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
+      syncIntervalRef.current = setInterval(async () => {
+        await fetch('/api/gmb/sync-reviews', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        });
+      }, SYNC_INTERVAL_MS);
+    }
+  }, [businesses, subscribeToAllBusinesses]);
+
+  const handleLocationChange = async (locId: string) => {
+    setSelectedLocationId(locId);
+    await fetchReviews(locId);
+  };
 
   const handleGenerateAIReply = async (review: Review) => {
     setLoadingAI(true);
@@ -196,19 +232,23 @@ export default function ReviewsPage() {
   };
 
   const handleSubmitReply = async () => {
-    if (!selectedReview || !replyText.trim() || !businessId) return;
+    if (!selectedReview || !replyText.trim()) return;
     setSubmitting(true);
     try {
       const res = await fetch('/api/reviews', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reviewId: selectedReview.id, replyText: replyText.trim(), businessId }),
+        body: JSON.stringify({
+          reviewId: selectedReview.id,
+          replyText: replyText.trim(),
+          businessId: selectedReview.business_id,
+        }),
       });
       if (!res.ok) {
         const d = await res.json();
         throw new Error(d.error || 'Failed to save reply');
       }
-      setReviews(prev =>
+      setAllReviews(prev =>
         prev.map(r => r.id === selectedReview.id
           ? { ...r, reply_text: replyText.trim(), reply_status: 'replied' }
           : r
@@ -225,18 +265,20 @@ export default function ReviewsPage() {
   };
 
   const handleSyncReviews = async () => {
-    if (!businessId) return;
     setSyncing(true);
     setSyncError(null);
     try {
+      const body = selectedLocationId !== 'all'
+        ? { businessId: selectedLocationId }
+        : {};
       const res = await fetch('/api/gmb/sync-reviews', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ businessId }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (res.ok) {
-        await fetchReviewsById(businessId);
+        await fetchReviews(selectedLocationId !== 'all' ? selectedLocationId : undefined);
         toast({ title: 'Sync Complete', description: data.message || `Synced ${data.synced ?? 0} review(s)` });
       } else {
         const msg = data.error || 'Sync failed';
@@ -265,7 +307,7 @@ export default function ReviewsPage() {
     });
   };
 
-  const filteredReviews = reviews.filter(r => {
+  const filteredReviews = allReviews.filter(r => {
     const matchFilter =
       filter === 'all' ||
       (filter === 'pending' && r.reply_status === 'pending') ||
@@ -273,15 +315,18 @@ export default function ReviewsPage() {
     const matchSearch =
       !searchQuery ||
       r.reviewer_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (r.review_text || '').toLowerCase().includes(searchQuery.toLowerCase());
+      (r.review_text || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (r.business_name || '').toLowerCase().includes(searchQuery.toLowerCase());
     return matchFilter && matchSearch;
   });
 
-  const dist = ratingDistribution(reviews);
-  const avgRating = reviews.length ? reviews.reduce((s, r) => s + r.rating, 0) / reviews.length : 0;
-  const pendingCount = reviews.filter(r => r.reply_status === 'pending').length;
-  const repliedCount = reviews.filter(r => r.reply_status === 'replied').length;
-  const responseRate = reviews.length ? Math.round((repliedCount / reviews.length) * 100) : 0;
+  const dist = ratingDistribution(allReviews);
+  const avgRating = allReviews.length ? allReviews.reduce((s, r) => s + r.rating, 0) / allReviews.length : 0;
+  const pendingCount = allReviews.filter(r => r.reply_status === 'pending').length;
+  const repliedCount = allReviews.filter(r => r.reply_status === 'replied').length;
+  const responseRate = allReviews.length ? Math.round((repliedCount / allReviews.length) * 100) : 0;
+
+  const isMultiLocation = businesses.length > 1;
 
   if (loading) {
     return (
@@ -298,7 +343,11 @@ export default function ReviewsPage() {
         <div className="flex items-start justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Reviews</h1>
-            <p className="text-sm text-gray-500 mt-0.5">Manage and respond to customer reviews</p>
+            <p className="text-sm text-gray-500 mt-0.5">
+              {isMultiLocation
+                ? `Managing reviews across ${businesses.length} locations`
+                : 'Manage and respond to customer reviews'}
+            </p>
           </div>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-1.5 text-xs font-medium">
@@ -320,11 +369,51 @@ export default function ReviewsPage() {
             <Button onClick={handleSyncReviews} disabled={syncing} variant="outline" size="sm">
               {syncing
                 ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Syncing...</>
-                : <><RefreshCw className="mr-2 h-4 w-4" />Sync Reviews</>
+                : <><RefreshCw className="mr-2 h-4 w-4" />{selectedLocationId === 'all' ? 'Sync All' : 'Sync Location'}</>
               }
             </Button>
           </div>
         </div>
+
+        {isMultiLocation && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={() => handleLocationChange('all')}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
+                selectedLocationId === 'all'
+                  ? 'bg-gray-900 text-white border-gray-900'
+                  : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400 hover:text-gray-900'
+              }`}
+            >
+              <Building2 className="h-3 w-3" />
+              All Locations
+              <span className={`ml-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${selectedLocationId === 'all' ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-500'}`}>
+                {allReviews.length}
+              </span>
+            </button>
+            {businesses.map(biz => {
+              const count = allReviews.filter(r => r.business_id === biz.id).length;
+              const isActive = selectedLocationId === biz.id;
+              return (
+                <button
+                  key={biz.id}
+                  onClick={() => handleLocationChange(biz.id)}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
+                    isActive
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300 hover:text-blue-700'
+                  }`}
+                >
+                  <MapPin className="h-3 w-3" />
+                  {biz.name}
+                  <span className={`ml-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${isActive ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-500'}`}>
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {syncError && (
           <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
@@ -343,13 +432,13 @@ export default function ReviewsPage() {
               <span className="text-4xl font-bold text-gray-900">{avgRating.toFixed(1)}</span>
               <div className="mb-1">
                 <StarDisplay rating={Math.round(avgRating)} size="md" />
-                <p className="text-xs text-gray-400 mt-0.5">{reviews.length} review{reviews.length !== 1 ? 's' : ''}</p>
+                <p className="text-xs text-gray-400 mt-0.5">{allReviews.length} review{allReviews.length !== 1 ? 's' : ''}</p>
               </div>
             </div>
             <div className="space-y-1">
               {[5, 4, 3, 2, 1].map(star => {
                 const count = dist[star] || 0;
-                const pct = reviews.length ? (count / reviews.length) * 100 : 0;
+                const pct = allReviews.length ? (count / allReviews.length) * 100 : 0;
                 return (
                   <div key={star} className="flex items-center gap-1.5">
                     <span className="text-xs text-gray-400 w-2 flex-shrink-0">{star}</span>
@@ -366,8 +455,10 @@ export default function ReviewsPage() {
 
           <div className="bg-white border border-gray-200 rounded-xl p-4 flex flex-col justify-center">
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Total Reviews</p>
-            <p className="text-3xl font-bold text-gray-900">{reviews.length}</p>
-            <p className="text-xs text-gray-400 mt-1">All time</p>
+            <p className="text-3xl font-bold text-gray-900">{allReviews.length}</p>
+            <p className="text-xs text-gray-400 mt-1">
+              {isMultiLocation && selectedLocationId === 'all' ? `Across ${businesses.length} locations` : 'All time'}
+            </p>
           </div>
 
           <div className="bg-white border border-gray-200 rounded-xl p-4 flex flex-col justify-center">
@@ -391,7 +482,9 @@ export default function ReviewsPage() {
         <div className="bg-white border border-gray-200 rounded-xl">
           <div className="p-4 border-b border-gray-100 flex items-center justify-between gap-3 flex-wrap">
             <div>
-              <h2 className="text-sm font-bold text-gray-900">All Reviews</h2>
+              <h2 className="text-sm font-bold text-gray-900">
+                {selectedLocationId === 'all' ? 'All Reviews' : businesses.find(b => b.id === selectedLocationId)?.name || 'Reviews'}
+              </h2>
               <p className="text-xs text-gray-400 mt-0.5">View and respond to customer feedback in real time</p>
             </div>
             <div className="relative">
@@ -408,7 +501,7 @@ export default function ReviewsPage() {
           <div className="px-4 pt-3 pb-4">
             <Tabs value={filter} onValueChange={setFilter}>
               <TabsList className="h-8">
-                <TabsTrigger value="all" className="text-xs px-3">All ({reviews.length})</TabsTrigger>
+                <TabsTrigger value="all" className="text-xs px-3">All ({allReviews.length})</TabsTrigger>
                 <TabsTrigger value="pending" className="text-xs px-3 flex items-center gap-1.5">
                   Pending ({pendingCount})
                   {pendingCount > 0 && (
@@ -426,11 +519,11 @@ export default function ReviewsPage() {
                     <Star className="h-10 w-10 mx-auto mb-3 text-gray-200" />
                     <p className="font-medium text-gray-500">No reviews found</p>
                     <p className="text-sm text-gray-400 mt-1">
-                      {reviews.length === 0
-                        ? 'Click "Sync Reviews" to import from Google'
+                      {allReviews.length === 0
+                        ? 'Click "Sync All" to import from Google'
                         : 'Try adjusting your filters'}
                     </p>
-                    {reviews.length === 0 && (
+                    {allReviews.length === 0 && (
                       <Button onClick={handleSyncReviews} disabled={syncing} size="sm" className="mt-4">
                         <RefreshCw className="mr-2 h-4 w-4" />Sync Reviews Now
                       </Button>
@@ -471,6 +564,9 @@ export default function ReviewsPage() {
                                       <span className="flex items-center gap-1 text-xs text-amber-600 font-medium">
                                         <Clock className="h-3 w-3" /> Pending
                                       </span>
+                                    )}
+                                    {isMultiLocation && selectedLocationId === 'all' && review.business_name && (
+                                      <LocationBadge name={review.business_name} />
                                     )}
                                   </div>
                                   <div className="flex items-center gap-2 mt-1">
@@ -535,6 +631,9 @@ export default function ReviewsPage() {
             </DialogTitle>
             <DialogDescription>
               Responding to {selectedReview?.reviewer_name}&apos;s review
+              {isMultiLocation && selectedReview?.business_name && (
+                <span className="ml-1 text-blue-600">at {selectedReview.business_name}</span>
+              )}
             </DialogDescription>
           </DialogHeader>
 
