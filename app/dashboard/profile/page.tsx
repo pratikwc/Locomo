@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { RefreshCw, Save, User, Phone, Mail, Shield, Calendar, Link2 } from 'lucide-react';
+import { RefreshCw, User, Phone, Mail, Shield, Calendar, Link2, Clock } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/auth-context';
 import { format } from 'date-fns';
@@ -94,6 +94,34 @@ export default function ProfilePage() {
   useEffect(() => {
     fetchData();
   }, []);
+
+  const DAYS_ORDER = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
+  const DAY_LABELS: Record<string, string> = {
+    MONDAY: 'Monday', TUESDAY: 'Tuesday', WEDNESDAY: 'Wednesday',
+    THURSDAY: 'Thursday', FRIDAY: 'Friday', SATURDAY: 'Saturday', SUNDAY: 'Sunday',
+  };
+
+  const formatTime = (time: string) => {
+    if (!time) return '';
+    const [hourStr, minuteStr] = time.split(':');
+    const hour = parseInt(hourStr, 10);
+    const minute = minuteStr || '00';
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const displayHour = hour % 12 || 12;
+    return `${displayHour}:${minute} ${ampm}`;
+  };
+
+  const getHoursByDay = (hours: any): Record<string, { open: string; close: string }[]> => {
+    if (!hours?.periods?.length) return {};
+    const map: Record<string, { open: string; close: string }[]> = {};
+    for (const period of hours.periods) {
+      const day = period.openDay;
+      if (!day) continue;
+      if (!map[day]) map[day] = [];
+      map[day].push({ open: period.openTime || '', close: period.closeTime || '' });
+    }
+    return map;
+  };
 
   const formatAddress = (address: any) => {
     if (!address) return '';
@@ -304,22 +332,55 @@ export default function ProfilePage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Business Hours</CardTitle>
-          <CardDescription>Set your regular business hours</CardDescription>
+          <div className="flex items-center gap-2">
+            <Clock className="h-5 w-5 text-slate-500" />
+            <div>
+              <CardTitle>Business Hours</CardTitle>
+              <CardDescription>Regular hours from your Google Business Profile</CardDescription>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
-          <div className="space-y-3">
-            {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map(
-              (day) => (
-                <div key={day} className="flex items-center gap-4">
-                  <div className="w-24 font-medium">{day}</div>
-                  <Input type="time" className="w-32" />
-                  <span>to</span>
-                  <Input type="time" className="w-32" />
-                </div>
-              )
-            )}
-          </div>
+          {business?.hours?.periods?.length ? (
+            <div className="divide-y divide-slate-100">
+              {(() => {
+                const hoursByDay = getHoursByDay(business.hours);
+                return DAYS_ORDER.map((day) => {
+                  const periods = hoursByDay[day];
+                  const isWeekend = day === 'SATURDAY' || day === 'SUNDAY';
+                  return (
+                    <div key={day} className={`flex items-center py-3 ${isWeekend ? 'bg-slate-50/50 rounded' : ''}`}>
+                      <div className="w-32 text-sm font-medium text-slate-700">
+                        {DAY_LABELS[day]}
+                      </div>
+                      <div className="flex-1">
+                        {periods?.length ? (
+                          <div className="flex flex-wrap gap-2">
+                            {periods.map((period, i) => (
+                              <span key={i} className="inline-flex items-center gap-1.5 text-sm text-slate-800 bg-blue-50 border border-blue-100 rounded-md px-2.5 py-1">
+                                <span className="font-medium">{formatTime(period.open)}</span>
+                                <span className="text-slate-400">–</span>
+                                <span className="font-medium">{formatTime(period.close)}</span>
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="inline-flex items-center text-sm text-slate-400 bg-slate-100 rounded-md px-2.5 py-1">
+                            Closed
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-slate-500">
+              <Clock className="h-8 w-8 mx-auto mb-2 text-slate-300" />
+              <p className="text-sm">No hours data available. Sync your business profile to load hours.</p>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
