@@ -121,7 +121,17 @@ export async function POST(request: NextRequest) {
       }
 
       const accessToken = await getValidAccessToken(userId);
-      if (!accessToken) throw new Error('Failed to get valid access token');
+      if (!accessToken) {
+        await supabaseAdmin.from('gmb_sync_sessions').update({
+          status: 'failed',
+          completed_at: new Date().toISOString(),
+          last_error: { message: 'Failed to get valid access token' },
+        }).eq('id', syncSessionId);
+        return NextResponse.json(
+          { error: 'Failed to get valid access token', code: 'TOKEN_EXPIRED' },
+          { status: 401 }
+        );
+      }
 
       let totalSynced = 0;
       const businessResults = [];

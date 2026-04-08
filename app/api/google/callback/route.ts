@@ -162,7 +162,8 @@ export async function GET(request: NextRequest) {
     }
 
     console.log('[OAuth Callback] Successfully connected Google account. GMB verification will happen asynchronously.');
-    return NextResponse.redirect(new URL('/gmb-onboarding?success=google_connected', request.url));
+    const destination = existingAccount ? '/dashboard?reconnected=true' : '/gmb-onboarding?success=google_connected';
+    return NextResponse.redirect(new URL(destination, request.url));
   } catch (error: any) {
     console.error('[OAuth Callback] Error processing callback:', error);
     const message = error.message || 'Failed to connect Google account';

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -34,6 +35,7 @@ interface UserProfile {
 export default function ProfilePage() {
   const { toast } = useToast();
   const { user } = useAuth();
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -81,11 +83,20 @@ export default function ProfilePage() {
       toast({ title: 'Sync Complete', description: data.message });
       await fetchData();
     } catch (error: any) {
-      toast({
-        title: 'Sync Failed',
-        description: error.message || 'Failed to sync business data',
-        variant: 'destructive',
-      });
+      if (error.status === 401) {
+        toast({
+          title: 'Google session expired',
+          description: 'Go to the dashboard to reconnect your Google account.',
+          variant: 'destructive',
+        });
+        router.push('/dashboard');
+      } else {
+        toast({
+          title: 'Sync Failed',
+          description: error.message || 'Failed to sync business data',
+          variant: 'destructive',
+        });
+      }
     } finally {
       setSyncing(false);
     }

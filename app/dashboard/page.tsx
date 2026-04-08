@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/auth-context';
+import { useToast } from '@/hooks/use-toast';
 import { LoadingScreen } from '@/components/loading-screen';
 import { GoogleConnectionCards } from '@/components/dashboard/google-connection-cards';
 import { StatCard } from '@/components/dashboard/stat-card';
@@ -92,7 +93,11 @@ function getProblemCount(factors: any[]) {
 
 export default function DashboardPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { hasGoogleAccount, loading: authLoading, checkGoogleConnection } = useAuth();
+  const { toast } = useToast();
+  const [tokenExpired, setTokenExpired] = useState(false);
+  const [reconnecting, setReconnecting] = useState(false);
 
   const [dashData, setDashData] = useState<DashboardPayload | null>(null);
   const [loading, setLoading] = useState(true);
@@ -121,8 +126,13 @@ export default function DashboardPage() {
         checkGoogleConnection();
         window.history.replaceState({}, '', '/dashboard');
       }
+      if (params.get('reconnected') === 'true') {
+        setTokenExpired(false);
+        window.history.replaceState({}, '', '/dashboard');
+        toast({ title: 'Google account reconnected', description: 'You can now sync your data.' });
+      }
     }
-  }, [checkGoogleConnection]);
+  }, [checkGoogleConnection, toast]);
 
   useEffect(() => {
     const init = async () => {
@@ -198,14 +208,38 @@ export default function DashboardPage() {
     }
   };
 
+  const handleReconnectGoogle = async () => {
+    setReconnecting(true);
+    try {
+      const data = await api.get<{ authUrl?: string }>('/api/google/auth-url');
+      if (data.authUrl) {
+        window.location.href = data.authUrl;
+      }
+    } catch {
+      setReconnecting(false);
+      toast({ title: 'Failed to start reconnect', description: 'Please try again.', variant: 'destructive' });
+    }
+  };
+
   const handleSync = async () => {
     if (syncing) return;
     setSyncing(true);
     try {
       await api.post('/api/sync/all');
+      setTokenExpired(false);
       hasFetchedRef.current = false;
       await fetchData();
       hasFetchedRef.current = true;
+    } catch (error: any) {
+      if (error.status === 401) {
+        setTokenExpired(true);
+      } else {
+        toast({
+          title: 'Sync failed',
+          description: error.message || 'Failed to sync data. Please try again.',
+          variant: 'destructive',
+        });
+      }
     } finally {
       setSyncing(false);
     }
@@ -253,7 +287,27 @@ export default function DashboardPage() {
 
   if (!dashData) {
     return (
-      <div className="p-6">
+      <div className="p-6 space-y-4">
+        {tokenExpired && (
+          <div className="flex items-center justify-between gap-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3">
+            <div className="flex items-center gap-3">
+              <AlertCircle className="h-5 w-5 flex-shrink-0 text-red-500" />
+              <div>
+                <p className="text-sm font-medium text-red-800">Your Google session has expired</p>
+                <p className="text-sm text-red-700">Reconnect your Google account to continue syncing data.</p>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              onClick={handleReconnectGoogle}
+              disabled={reconnecting}
+              className="shrink-0 bg-red-600 hover:bg-red-700 text-white"
+            >
+              {reconnecting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              {reconnecting ? 'Redirecting...' : 'Reconnect Google'}
+            </Button>
+          </div>
+        )}
         <div className="bg-white border border-gray-200 rounded-xl p-12 text-center">
           <RefreshCw className="h-14 w-14 mx-auto text-gray-400 mb-4" />
           <h2 className="text-2xl font-bold mb-2">Syncing Your Business Data</h2>
@@ -302,6 +356,28 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen bg-growmatiq-beige">
       <div className="max-w-[1280px] mx-auto px-4 py-6 space-y-5">
+
+        {/* Token expired banner */}
+        {tokenExpired && (
+          <div className="flex items-center justify-between gap-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3">
+            <div className="flex items-center gap-3">
+              <AlertCircle className="h-5 w-5 flex-shrink-0 text-red-500" />
+              <div>
+                <p className="text-sm font-medium text-red-800">Your Google session has expired</p>
+                <p className="text-sm text-red-700">Reconnect your Google account to continue syncing data.</p>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              onClick={handleReconnectGoogle}
+              disabled={reconnecting}
+              className="shrink-0 bg-red-600 hover:bg-red-700 text-white"
+            >
+              {reconnecting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              {reconnecting ? 'Redirecting...' : 'Reconnect Google'}
+            </Button>
+          </div>
+        )}
 
         {/* Header */}
         <div className="flex items-start justify-between gap-4">
