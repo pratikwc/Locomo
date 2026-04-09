@@ -9,7 +9,7 @@ import { GoogleConnectionCards } from '@/components/dashboard/google-connection-
 import { StatCard } from '@/components/dashboard/stat-card';
 import { RankingFactorRow } from '@/components/dashboard/ranking-factor-row';
 import { ActionMetricCard } from '@/components/dashboard/action-metric-card';
-import { QuickWinItem } from '@/components/dashboard/quick-win-item';
+import { RecommendationCard, RecommendationCardSkeleton, type Recommendation } from '@/components/dashboard/recommendation-card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -102,6 +102,8 @@ export default function DashboardPage() {
   const [dashData, setDashData] = useState<DashboardPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [hasGMBAccess, setHasGMBAccess] = useState(true);
+  const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
+  const [recsLoading, setRecsLoading] = useState(false);
   const [showGoogleConnect, setShowGoogleConnect] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [businessId, setBusinessId] = useState<string | null>(null);
@@ -202,6 +204,13 @@ export default function DashboardPage() {
       const data = await api.get<DashboardPayload>(`/api/dashboard?businessId=${bid}`);
       setDashData(data);
       setLoading(false);
+
+      // Fetch AI recommendations in the background (non-blocking)
+      setRecsLoading(true);
+      api.get<{ recommendations: Recommendation[] }>('/api/ai/recommendations')
+        .then(r => setRecommendations(r.recommendations ?? []))
+        .catch(() => {/* silently fail — recommendations are non-critical */})
+        .finally(() => setRecsLoading(false));
     } catch {
       setFetchFailed(true);
       setLoading(false);
@@ -322,7 +331,7 @@ export default function DashboardPage() {
   }
 
   const { business, stats, healthScore, searchRankingFactors, recentReviews } = dashData;
-  const actionItems: any[] = healthScore?.action_items || [];
+
   const ratingFreshness = getRatingFreshnessLabel(stats.daysSinceLastReview);
   const overallScoreLabel = getScoreLabel(healthScore?.score ?? stats.profileCompleteness);
   const problemCount = getProblemCount(searchRankingFactors);
@@ -857,38 +866,32 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* Quick Wins */}
+            {/* AI Recommendations */}
             <div className="bg-white border border-gray-200 rounded-xl p-5">
               <div className="flex items-center gap-2 mb-1">
-                <div className="h-5 w-5 rounded-full border-2 border-green-500 flex items-center justify-center">
-                  <div className="h-2 w-2 rounded-full bg-green-500" />
+                <div className="h-5 w-5 rounded-full border-2 border-purple-500 flex items-center justify-center">
+                  <div className="h-2 w-2 rounded-full bg-purple-500" />
                 </div>
-                <h2 className="text-sm font-bold text-gray-900">Quick Wins</h2>
+                <h2 className="text-sm font-bold text-gray-900">AI Recommendations</h2>
               </div>
               <p className="text-xs text-gray-500 mb-3">
-                {actionItems.length} improvement{actionItems.length !== 1 ? 's' : ''} to boost visibility
+                Personalised actions to improve your local ranking
               </p>
-
               <div className="space-y-2">
-                {actionItems.length === 0 ? (
+                {recsLoading ? (
+                  <>
+                    <RecommendationCardSkeleton />
+                    <RecommendationCardSkeleton />
+                    <RecommendationCardSkeleton />
+                  </>
+                ) : recommendations.length === 0 ? (
                   <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-100 rounded-lg">
                     <Star className="h-4 w-4 text-green-500" />
-                    <p className="text-sm text-green-700 font-medium">Great job! No urgent improvements needed.</p>
+                    <p className="text-sm text-green-700 font-medium">Your profile looks great! Check back after syncing new data.</p>
                   </div>
                 ) : (
-                  actionItems.slice(0, 4).map((item: any, i: number) => (
-                    <QuickWinItem
-                      key={i}
-                      title={item.title}
-                      description={item.description}
-                      priority={item.priority}
-                      action={item.type === 'profile' ? 'Fix' : item.type === 'reviews' ? 'Act' : undefined}
-                      onAction={() => {
-                        if (item.type === 'profile') router.push('/dashboard/profile');
-                        else if (item.type === 'reviews') router.push('/dashboard/reviews');
-                        else if (item.type === 'posts') router.push('/dashboard/posts');
-                      }}
-                    />
+                  recommendations.map(rec => (
+                    <RecommendationCard key={rec.id} rec={rec} />
                   ))
                 )}
               </div>

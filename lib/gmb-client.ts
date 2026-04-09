@@ -325,6 +325,62 @@ export async function replyToReview(
   }
 }
 
+export interface LocalPostRequest {
+  topicType: 'STANDARD' | 'EVENT' | 'OFFER';
+  summary: string;
+  callToAction?: {
+    actionType: 'BOOK' | 'ORDER' | 'SHOP' | 'LEARN_MORE' | 'SIGN_UP' | 'CALL';
+    url?: string;
+  };
+  /** Public image URL to attach to the post */
+  mediaUrl?: string;
+}
+
+export interface LocalPostResponse {
+  name: string;
+  state: string;
+  topicType: string;
+  summary: string;
+  createTime: string;
+}
+
+/**
+ * Create a Google Business Profile local post.
+ * locationName: full GMB path e.g. "accounts/123/locations/456"
+ */
+export async function createLocalPost(
+  accessToken: string,
+  locationName: string,
+  post: LocalPostRequest
+): Promise<LocalPostResponse | null> {
+  try {
+    const path = locationName.replace(/^\//, '');
+    const url = `${GMB_V4_BASE}/${path}/localPosts`;
+
+    const body: Record<string, unknown> = {
+      topicType: post.topicType,
+      summary: post.summary,
+    };
+
+    if (post.callToAction) {
+      body.callToAction = post.callToAction;
+    }
+
+    if (post.mediaUrl) {
+      body.media = [{ mediaFormat: 'PHOTO', sourceUrl: post.mediaUrl }];
+    }
+
+    const data = await fetchWithAuth(url, accessToken, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+    return data as LocalPostResponse;
+  } catch (error) {
+    console.error('[GMB] Error creating local post:', error);
+    throw error;
+  }
+}
+
 export async function updateBusinessInfo(
   accessToken: string,
   locationName: string,

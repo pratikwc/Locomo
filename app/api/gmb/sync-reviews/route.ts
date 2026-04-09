@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase-admin';
 import { getAuthenticatedUserId } from '@/lib/auth-utils';
-import { listReviews } from '@/lib/gmb-client';
+import { listReviews, replyToReview } from '@/lib/gmb-client';
 import { getValidAccessToken } from '@/lib/google-token-manager';
+import { callOpenAI } from '@/lib/openai';
 
 const STAR_RATING_MAP: Record<string, number> = {
   ONE: 1, TWO: 2, THREE: 3, FOUR: 4, FIVE: 5,
@@ -80,6 +81,55 @@ async function syncReviewsForBusiness(
     .from('businesses')
     .update({ last_synced_at: new Date().toISOString() })
     .eq('id', business.id);
+
+  // Auto-reply: only run if enabled on this business
+  if (business.auto_reply_enabled) {
+    const minRating: number = business.auto_reply_min_rating ?? 4;
+    // Find new reviews that need a reply and meet the rating threshold
+    const autoReplyTargets = reviewsToUpsert.filter(
+      r => r.reply_status === 'pending' && r.rating >= minRating
+    );
+
+    for (const rev of autoReplyTargets) {
+      try {
+        const reply = await callOpenAI(
+          [
+            {
+              role: 'system',
+              content: `You are a professional business owner replying to a Google review for ${business.name}.
+Write a concise, warm reply (2-3 sentences). Sound human, not corporate. Do not use placeholders.`,
+            },
+            {
+              role: 'user',
+              content: `Reviewer: ${rev.reviewer_name}
+Rating: ${rev.rating}/5
+Review: ${rev.review_text || '(rating only, no text)'}
+
+Write a reply.`,
+            },
+          ],
+          { temperature: 0.75, maxTokens: 150 }
+        );
+
+        if (reply && rev.google_review_name) {
+          const posted = await replyToReview(accessToken, rev.google_review_name, reply);
+          if (posted) {
+            await supabaseAdmin
+              .from('reviews')
+              .update({
+                reply_text: reply,
+                reply_status: 'replied',
+                reply_date: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              })
+              .eq('google_review_id', rev.google_review_id);
+          }
+        }
+      } catch (err) {
+        console.error(`[Sync Reviews] Auto-reply failed for review ${rev.google_review_id}:`, err);
+      }
+    }
+  }
 
   return { synced: syncedCount };
 }

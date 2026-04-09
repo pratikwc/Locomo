@@ -44,6 +44,10 @@ export const api = {
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
   },
+
+  delete<T>(path: string): Promise<T> {
+    return apiFetch<T>(path, { method: 'DELETE' });
+  },
 };
 
 export { ApiError };
