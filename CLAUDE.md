@@ -2,12 +2,27 @@
 
 ## Product Vision
 
-Zero-human-effort GMB autopilot for local businesses. The goal: rank businesses on Google Maps by automating every action Google rewards.
+**Growmatiq** is an AI autopilot that runs a local business's entire Google presence on autopilot, so they rank higher on Google without lifting a finger.
+
+**The Problem:** Local business owners (salons, restaurants, clinics, gyms) know they should be posting on Google, replying to reviews, keeping their profile updated — but they're too busy running their business. So they do nothing. Competitors rank above them.
+
+**The Answer:** Connect Google once. The AI handles everything from that point forward.
+
+**Core differentiator:** Most GMB tools are dashboards — they show data and you still do the work. Growmatiq is an autonomous agent that *acts*, not just reports. Intelligence is baked into every AI decision: a salon post sounds different from a dentist post, keywords are city-specific, image style matches post purpose, reply tone matches review sentiment.
 
 Google's local ranking has 3 pillars:
 - **Relevance** — profile matches search intent (category, description, keywords, posts, Q&A)
 - **Prominence** — trust signals (review count, recency, reply rate, post frequency)
 - **Distance** — accurate address + service area (we can't change this, so we dominate the other two)
+
+### What the Product Does
+1. **Content Autopilot** — 2 posts/week with AI images, local keywords, rotating types (Update/Offer/Event)
+2. **Review Management** — auto-reply 4-5★ within hours, flag 1-2★ with drafted reply for owner
+3. **Profile Intelligence** — completeness audit, NAP consistency check, holiday hours
+4. **Keyword & Rank Tracking** — which terms we rank for, movement over time, competitor keywords
+5. **Analytics Dashboard** — GMB Insights: impressions, clicks, calls, direction requests
+6. **Weekly Owner Digest** — "autopilot ran this week: 2 posts, 5 reviews replied, rank #4→#2"
+7. **Competitor Intelligence** — nearby activity alerts, gap detection ("competitors have Christmas posts, you don't")
 
 ### Weekly Autopilot Cycle
 ```
@@ -22,9 +37,11 @@ SUN  Weekly digest to owner
 
 ### Roadmap
 - **Phase 1 (done):** AI post generation, auto review reply, AI recommendations
-- **Phase 2 (next):** GMB Insights sync, profile completeness audit, keyword library by category
-- **Phase 3:** Full autopilot — posting scheduler, Q&A automation, smart keyword injection
-- **Phase 4:** Owner intelligence — weekly digest, competitor alerts, opportunity detection
+- **Phase 2 (next):** GMB Insights sync → Analytics dashboard → Profile completeness audit → Weekly digest
+- **Phase 3:** Autopilot engine — posting scheduler, Q&A automation, smart keyword injection
+- **Phase 4:** Intelligence layer — keyword/rank tracking, competitor monitoring, multi-location/agency mode
+
+Full roadmap: `docs/superpowers/specs/2026-04-19-growmatiq-roadmap.md`
 
 ---
 
