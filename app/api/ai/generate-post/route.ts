@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUserId } from '@/lib/auth-utils';
 import { callOpenAI } from '@/lib/openai';
 import { supabaseAdmin } from '@/lib/supabase-admin';
+import { getKeywordsForCategory } from '@/lib/keyword-library';
 
 export async function POST(request: NextRequest) {
   try {
@@ -26,6 +27,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Business not found' }, { status: 404 });
     }
 
+    const keywords = getKeywordsForCategory(business.category, 3);
+
     const postTypeInstructions: Record<string, string> = {
       STANDARD: 'Write a general business update or announcement.',
       OFFER: 'Write about a special offer or promotion. Include a clear discount or benefit.',
@@ -35,6 +38,7 @@ export async function POST(request: NextRequest) {
     const systemPrompt = `You are a local business marketing expert writing a Google Business Profile post.
 Posts should be engaging, local, and drive customer action.
 Keep posts under 300 words. Use a friendly, professional tone.
+Naturally weave in 2-3 of the provided local SEO keywords — they should read naturally, not forced.
 Return a JSON object with exactly two fields: "title" (5-8 words) and "content" (the post body, no title repeated).
 Return only valid JSON, no markdown.`;
 
@@ -43,6 +47,7 @@ Category: ${business.category || 'local business'}
 Description: ${business.description || 'Not provided'}
 Post Type: ${postType}
 Task: ${postTypeInstructions[postType] || postTypeInstructions.STANDARD}
+Local SEO keywords to weave in naturally: ${keywords.join(', ')}
 ${prompt ? `Additional instructions: ${prompt}` : ''}`;
 
     const raw = await callOpenAI(

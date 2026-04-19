@@ -12,9 +12,11 @@ import { ActionMetricCard } from '@/components/dashboard/action-metric-card';
 import { RecommendationCard, RecommendationCardSkeleton, type Recommendation } from '@/components/dashboard/recommendation-card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Phone, Navigation, Globe, CalendarDays, Eye, MousePointerClick, Star, MessageSquare, RefreshCw, Loader as Loader2, CircleAlert as AlertCircle, ChevronDown, Copy, MapPin, Tag, Clock, Code as Code2, Settings } from 'lucide-react';
-import { format, formatDistanceToNowStrict } from 'date-fns';
+import { Phone, Navigation, Globe, CalendarDays, Eye, MousePointerClick, Star, MessageSquare, RefreshCw, Loader as Loader2, CircleAlert as AlertCircle, ChevronDown, Copy, MapPin, Tag, Clock, Code as Code2, Settings, Newspaper, ArrowRight } from 'lucide-react';
+import { format, formatDistanceToNowStrict, parseISO } from 'date-fns';
+import Link from 'next/link';
 import { api } from '@/lib/api-client';
 
 interface LoadingStep {
@@ -52,6 +54,16 @@ interface DashboardPayload {
     status: string;
   }>;
   recentReviews: any[];
+}
+
+interface DigestData {
+  businessName: string;
+  weekOf: string;
+  posts: { count: number; items: { id: string; title: string; published_at: string }[] };
+  reviews: { received: number; replied: number; avgRating: number };
+  views: { thisWeek: number; priorWeek: number; trend: number };
+  highlights: string[];
+  topAction: string;
 }
 
 const HOUR_LABELS: Record<string, string> = {
@@ -107,6 +119,7 @@ export default function DashboardPage() {
   const [showGoogleConnect, setShowGoogleConnect] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [businessId, setBusinessId] = useState<string | null>(null);
+  const [digest, setDigest] = useState<DigestData | null>(null);
 
   const [loadingSteps, setLoadingSteps] = useState<LoadingStep[]>([
     { label: 'Authentication verified', status: 'loading' },
@@ -200,6 +213,11 @@ export default function DashboardPage() {
       setHasGMBAccess(true);
       const bid = statusData.businesses[0].id;
       setBusinessId(bid);
+
+      // Fetch digest in background (non-blocking)
+      api.get<DigestData>(`/api/digest?businessId=${bid}`)
+        .then(d => setDigest(d))
+        .catch(() => {/* digest is non-critical */});
 
       const data = await api.get<DashboardPayload>(`/api/dashboard?businessId=${bid}`);
       setDashData(data);
@@ -424,6 +442,41 @@ export default function DashboardPage() {
           )}
           <ChevronDown className="h-4 w-4 text-gray-400" />
         </div>
+
+        {/* Weekly Digest Banner */}
+        {digest && (
+          <Card className="bg-white border-gray-200">
+            <CardContent className="py-4 px-5">
+              <div className="flex items-start justify-between gap-4 flex-wrap mb-2">
+                <div className="flex items-center gap-2">
+                  <Newspaper className="h-4 w-4 text-[#6931FF]" />
+                  <span className="text-sm font-semibold text-gray-900">This Week's Autopilot Report</span>
+                  <span className="text-xs text-gray-400">
+                    {(() => {
+                      const s = parseISO(digest.weekOf);
+                      const e = new Date(s); e.setDate(e.getDate() + 6);
+                      return `${format(s, 'MMM d')} – ${format(e, 'MMM d')}`;
+                    })()}
+                  </span>
+                </div>
+                <Link href="/dashboard/digest" className="text-xs font-semibold text-[#6931FF] hover:underline flex items-center gap-1 flex-shrink-0">
+                  View full digest <ArrowRight className="h-3 w-3" />
+                </Link>
+              </div>
+              {digest.highlights.length > 0 && (
+                <p className="text-sm text-gray-600 mb-3">
+                  {digest.highlights.join(' · ')}
+                </p>
+              )}
+              {digest.topAction && (
+                <div className="bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
+                  <p className="text-xs font-semibold text-blue-700 mb-0.5">What to do next</p>
+                  <p className="text-xs text-blue-600">{digest.topAction}</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Top Stats Row */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

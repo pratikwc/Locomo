@@ -481,6 +481,66 @@ export interface LocationInsightsTotals {
  * IMPORTANT: Requires "Business Profile Performance API" enabled in Google Cloud Console.
  * Default quota is 0 — you must request access from Google after enabling.
  */
+export interface GMBQuestion {
+  name: string;
+  author: { displayName: string; profilePhotoUri?: string; type: string };
+  upvoteCount: number;
+  text: string;
+  createTime: string;
+  updateTime: string;
+  topAnswers?: GMBAnswer[];
+  totalAnswerCount: number;
+}
+
+export interface GMBAnswer {
+  name: string;
+  author: { displayName: string; profilePhotoUri?: string; type: string };
+  upvoteCount: number;
+  text: string;
+  createTime: string;
+  updateTime: string;
+}
+
+export async function listQuestions(
+  accessToken: string,
+  locationName: string
+): Promise<GMBQuestion[]> {
+  const path = locationName.replace(/^\//, '');
+  const allQuestions: GMBQuestion[] = [];
+  let pageToken: string | undefined;
+
+  do {
+    const url = new URL(`${GMB_V4_BASE}/${path}/questions`);
+    url.searchParams.set('pageSize', '100');
+    url.searchParams.set('answersPerQuestion', '1');
+    if (pageToken) url.searchParams.set('pageToken', pageToken);
+
+    const data = await fetchWithAuth(url.toString(), accessToken);
+    if (data.questions?.length) allQuestions.push(...data.questions);
+    pageToken = data.nextPageToken;
+  } while (pageToken);
+
+  return allQuestions;
+}
+
+export async function upsertAnswer(
+  accessToken: string,
+  questionName: string,
+  answerText: string
+): Promise<boolean> {
+  try {
+    const url = `${GMB_V4_BASE}/${questionName}/answers:upsert`;
+    await fetchWithAuth(url, accessToken, {
+      method: 'POST',
+      body: JSON.stringify({ answer: { text: answerText } }),
+    });
+    return true;
+  } catch (error) {
+    console.error('[GMB] Error posting answer:', error);
+    return false;
+  }
+}
+
 export async function getLocationInsights(
   accessToken: string,
   locationName: string,
