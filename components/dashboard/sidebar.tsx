@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { LayoutDashboard, Star, FileText, TrendingUp, CreditCard as Edit3, Calendar, Settings, LogOut, ChartBar as BarChart3, Users, Newspaper } from 'lucide-react';
+import { LayoutDashboard, Star, FileText, TrendingUp, CreditCard as Edit3, Calendar, Settings, LogOut, ChartBar as BarChart3, Users, Newspaper, HelpCircle, Zap } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 
 interface NavItem {
@@ -30,6 +30,16 @@ const navItems: NavItem[] = [
     title: 'Posts',
     href: '/dashboard/posts',
     icon: FileText,
+  },
+  {
+    title: 'Autopilot',
+    href: '/dashboard/autopilot',
+    icon: Zap,
+  },
+  {
+    title: 'Q&A',
+    href: '/dashboard/qa',
+    icon: HelpCircle,
   },
   {
     title: 'Keywords',
